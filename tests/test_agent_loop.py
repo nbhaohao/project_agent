@@ -1,11 +1,11 @@
-"""AgentLoop — fake LLM client, no network calls."""
+"""AgentLoop — fake LLM client and fake registry, no network calls."""
 
 from dataclasses import dataclass, field
 
 import pytest
 
 from app.application.agent.loop import AgentLoop
-from app.application.agent.tools import TOOLS_SCHEMA, dispatch_tool
+from app.application.agent.tools.base import Tool, ToolRegistry
 
 
 @dataclass
@@ -31,11 +31,26 @@ class FakeLLMClient:
         return next(self._responses)
 
 
+async def _noop(inp: dict) -> str:
+    return "tool-result"
+
+
+def _make_registry(*names: str) -> ToolRegistry:
+    reg = ToolRegistry()
+    for name in names:
+        reg.register(Tool(
+            name=name,
+            description="test",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            handler=_noop,
+        ))
+    return reg
+
+
 def _loop(responses, max_iterations=50) -> AgentLoop:
     return AgentLoop(
         llm=FakeLLMClient(responses),
-        tools=TOOLS_SCHEMA,
-        dispatch=dispatch_tool,
+        registry=_make_registry("get_current_time"),
         max_iterations=max_iterations,
     )
 
@@ -68,8 +83,7 @@ async def test_raises_on_max_iterations():
 
     loop = AgentLoop(
         llm=InfiniteClient(),
-        tools=TOOLS_SCHEMA,
-        dispatch=dispatch_tool,
+        registry=_make_registry("get_current_time"),
         max_iterations=3,
     )
     with pytest.raises(RuntimeError, match="exceeded"):
@@ -84,5 +98,5 @@ async def test_unknown_tool_returns_error_string_not_raise():
         ),
         FakeResponse([FakeBlock("text", text="handled.")], "end_turn"),
     ])
-    # loop should not crash — it wraps tool errors and continues
+    # registry raises UnknownTool — loop wraps it as tool_result string and continues
     assert await loop.run("use unknown tool") == "handled."

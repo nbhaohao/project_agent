@@ -9,7 +9,7 @@ import logging
 import signal
 
 from app.application.agent.loop import AgentLoop
-from app.application.agent.tools import TOOLS_SCHEMA, dispatch_tool
+from app.application.agent.tools.builtin import build_registry
 from app.infrastructure.db import SessionLocal
 from app.infrastructure.llm import AnthropicLLMClient
 from app.infrastructure.queue import RedisRunQueue
@@ -22,8 +22,7 @@ logger = logging.getLogger(__name__)
 def _build_loop() -> AgentLoop:
     return AgentLoop(
         llm=AnthropicLLMClient(),
-        tools=TOOLS_SCHEMA,
-        dispatch=dispatch_tool,
+        registry=build_registry(allowed={"network", "fs_read"}),
     )
 
 

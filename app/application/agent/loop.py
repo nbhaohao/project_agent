@@ -6,10 +6,10 @@ no compaction, no memory, no sub-agents (those come in M7/M8/M9).
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from app.application.agent.tools.base import ToolRegistry
     from app.application.ports import LLMClient
 
 MAX_ITERATIONS = 50
@@ -26,13 +26,11 @@ class AgentLoop:
     def __init__(
         self,
         llm: LLMClient,
-        tools: list[dict],
-        dispatch: Callable[[str, dict], str],
+        registry: ToolRegistry,
         max_iterations: int = MAX_ITERATIONS,
     ) -> None:
         self._llm = llm
-        self._tools = tools
-        self._dispatch = dispatch
+        self._registry = registry
         self._max_iterations = max_iterations
 
     async def run(self, input: str, system: str = "") -> str:
@@ -41,7 +39,7 @@ class AgentLoop:
         for _ in range(self._max_iterations):
             response = await self._llm.complete(
                 messages=messages,
-                tools=self._tools,
+                tools=self._registry.schemas(),
                 system=system,
             )
             messages.append({"role": "assistant", "content": response.content})
@@ -53,7 +51,7 @@ class AgentLoop:
             for block in response.content:
                 if getattr(block, "type", None) == "tool_use":
                     try:
-                        output = self._dispatch(block.name, block.input)
+                        output = await self._registry.dispatch(block.name, block.input)
                     except Exception as exc:
                         output = f"tool error: {exc}"
                     results.append({
