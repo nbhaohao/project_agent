@@ -1,0 +1,21 @@
+"""M3 tools — one safe built-in to exercise the tool-use loop."""
+
+from datetime import UTC, datetime
+
+TOOLS_SCHEMA: list[dict] = [
+    {
+        "name": "get_current_time",
+        "description": "Returns the current UTC date and time as an ISO-8601 string.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    }
+]
+
+
+def dispatch_tool(name: str, tool_input: dict) -> str:
+    if name == "get_current_time":
+        return datetime.now(UTC).isoformat()
+    raise ValueError(f"unknown tool: {name!r}")
