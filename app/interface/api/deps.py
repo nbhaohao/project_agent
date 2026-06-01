@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.run_service import RunService
 from app.infrastructure.db import SessionLocal
+from app.infrastructure.queue import RedisRunQueue
+from app.infrastructure.redis import redis_client
 from app.infrastructure.repositories import SqlAlchemyRunRepository
 
 
@@ -19,4 +21,4 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 def get_run_service(
     session: AsyncSession = Depends(get_session),
 ) -> RunService:
-    return RunService(SqlAlchemyRunRepository(session))
+    return RunService(SqlAlchemyRunRepository(session), RedisRunQueue(redis_client))
