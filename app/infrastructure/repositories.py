@@ -40,3 +40,9 @@ class SqlAlchemyRunRepository:
             .offset(offset)
         )
         return [_to_domain(orm) for orm in result.scalars().all()]
+
+    async def update(self, run: Run) -> None:
+        orm = await self._session.get(RunORM, run.id)
+        if orm is None:
+            raise ValueError(f"Run {run.id} not found")
+        orm.status = run.status
