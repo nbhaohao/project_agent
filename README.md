@@ -30,15 +30,20 @@ uv sync
 # 3. 配置(首次)
 cp .env.example .env
 
-# 4. 单元测试(无依赖,应全绿)
+# 4. 跑迁移建表
+uv run alembic upgrade head
+
+# 5. 单元测试(无依赖,应全绿)
 uv run pytest
 
-# 5. 起服务
+# 6. 起服务
 uv run uvicorn app.main:app --reload
 
-# 6. E2E 验证
-curl localhost:8000/health          # {"status":"ok"}
+# 7. E2E 验证
+curl localhost:8000/health           # {"status":"ok"}
 curl localhost:8000/health/ready     # postgres/redis 全 ok → 200
+curl -X POST localhost:8000/runs -H 'Content-Type: application/json' -d '{"input":"hello"}'
+curl localhost:8000/runs             # 列表
 # Swagger UI: http://localhost:8000/docs
 ```
 
@@ -47,7 +52,7 @@ curl localhost:8000/health/ready     # postgres/redis 全 ok → 200
 ## 路线图(Agent 平台/Runtime)
 
 - **M0 脚手架** ✅ docker-compose(pg/redis) + FastAPI + DDD-lite 四层 + health 探针
-- M1 Run/Session 模型 + PostgreSQL + Alembic(持久化一次 agent 执行)
+- **M1 Run 模型** ✅ PostgreSQL + Alembic + 端口/适配器 + 提交/查询接口(uuid7 主键)
 - M2 Agent 执行循环进 worker(LLM↔工具核心) + Redis 队列异步下发
 - M3 工具系统/工具注册表 + 沙箱化工具执行
 - M4 SSE 流式(步骤/token/工具调用) + 最小前端"看 agent 跑"
