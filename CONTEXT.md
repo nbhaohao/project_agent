@@ -1,7 +1,7 @@
 # Project Context
 
 > 把这个文件给任何 AI 助手读，它就能快速理解这个项目的背景、目标和当前状态。
-> 最后更新：2026-06-01（M3 代码已生成，等待集成测试验证）
+> 最后更新：2026-06-02（M4 代码完成，等待集成测试验证）
 
 ---
 
@@ -45,8 +45,8 @@ app/
 | M0 脚手架 | ✅ 完成 | docker-compose(pg16/redis7) + FastAPI + DDD-lite 四层 + /health 探针 |
 | M1 Run 模型 | ✅ 完成 | PostgreSQL + Alembic + 端口/适配器 + 提交/查询接口（uuid7 主键） |
 | M2 异步执行管道 | ✅ 完成 | 独立 worker 进程 + Redis List(BRPOP) + Run 状态机推进 + 落库 |
-| **M3 真 agent loop** | 🔄 进行中 | LLM port + AsyncAnthropic 适配器 + AgentLoop + get_current_time 工具 + result/error 持久化 |
-| M4 工具系统 | 待做 | 工具注册表 + 沙箱化执行 + 工具集 |
+| M3 真 agent loop | ✅ 完成 | LLM port + AsyncAnthropic 适配器 + AgentLoop + get_current_time 工具 + result/error 持久化 |
+| **M4 工具系统** | 🔄 进行中 | Tool dataclass + ToolRegistry(capability 过滤+超时) + http_fetch/file_read + 路径穿越防护 |
 | M5 SSE 流式 + 前端 | 待做 | SSE 流式输出 + run_messages 表 + 最小前端（vanilla HTML+JS） |
 | M6 中断/取消 | 待做 | 运行中 agent 的中断/取消控制面 |
 | M7 上下文工程 | 待做 | context 管理、compaction、消息历史 |
@@ -63,8 +63,9 @@ app/
 4. **LLM port duck-typed**（`LLMClient.complete()` 返回 `Any`，结构上匹配 Anthropic Message；不做全 provider 映射，YAGNI 直到第二个 provider）
 5. **前端 M5 进场**，形态 = 亮点演示台（highlight reel），vanilla HTML+JS，FastAPI 直接 serve 静态，零构建
 6. **消息(messages) ≠ 记忆(memory)**：messages 是单次 run 内的工作上下文（M5 建表）；memory 是跨 run 的长期知识（M8 pgvector）
+7. **工具沙箱轻量层**：capability 声明（`network`/`fs_read`）+ `asyncio.wait_for` 超时 + 路径穿越防护；进程/容器隔离留到真正需要执行任意代码时（YAGNI）
 
-## 项目文件结构（当前 M3）
+## 项目文件结构（当前 M4）
 
 ```
 project_agent/
@@ -79,8 +80,10 @@ project_agent/
 │   │   ├── ports.py                 # RunRepository / RunQueue / LLMClient Protocol
 │   │   ├── run_service.py           # submit / get / list 用例
 │   │   └── agent/
-│   │       ├── loop.py              # AgentLoop（LLM↔工具循环，max_iterations 安全限制）
-│   │       └── tools.py             # TOOLS_SCHEMA + dispatch_tool（M3: get_current_time）
+│   │       ├── loop.py              # AgentLoop（接 ToolRegistry，LLM↔工具循环）
+│   │       └── tools/
+│   │           ├── base.py          # Tool dataclass + ToolRegistry(capability 过滤+asyncio 超时)
+│   │           └── builtin.py       # get_current_time / http_fetch / file_read + build_registry()
 │   ├── infrastructure/
 │   │   ├── db.py                    # async SQLAlchemy engine + SessionLocal + Base
 │   │   ├── models.py                # RunORM（uuid 主键 + PG enum + tz 时间 + result/error）
@@ -97,7 +100,8 @@ project_agent/
 ├── scripts/
 │   ├── e2e_m1.sh                    # M1 集成测试（curl 断言）
 │   ├── e2e_m2.sh                    # M2 集成测试（worker stub 全链路）
-│   └── e2e_m3.sh                    # M3 集成测试（真 LLM tool-use 全链路）
+│   ├── e2e_m3.sh                    # M3 集成测试（真 LLM tool-use 全链路）
+│   └── e2e_m4.sh                    # M4 集成测试（get_current_time + http_fetch + file_read）
 ├── docker-compose.yml               # postgres:16 + redis:7
 ├── pyproject.toml                   # 依赖（fastapi/uvicorn/sqlalchemy/alembic/redis/anthropic）
 └── .env.example                     # 环境变量模板（DATABASE_URL/REDIS_URL/LLM 三键）
@@ -134,7 +138,7 @@ uv run uvicorn app.main:app --reload
 uv run python -m app.worker
 
 # 6. 验证（终端 C）
-./scripts/e2e_m3.sh
+./scripts/e2e_m4.sh
 ```
 
 API 文档：http://localhost:8000/docs
