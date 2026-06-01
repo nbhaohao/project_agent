@@ -32,10 +32,12 @@ json() { python3 -c "import json,sys;print(json.load(open('$BODY'))$1)"; }
 
 submit() {
   local prompt="$1"
+  local code
   code=$(curl -s -o "$BODY" -w '%{http_code}' \
     -X POST "$BASE/runs" -H 'Content-Type: application/json' \
     -d "{\"input\":$(python3 -c "import json,sys;print(json.dumps(sys.argv[1]))" "$prompt")}")
-  assert_code 201 "$code" "POST /runs"
+  # 重定向到 stderr，避免被 $() 捕获混入 RID
+  assert_code 201 "$code" "POST /runs" >&2
   json "['id']"
 }
 
@@ -66,6 +68,7 @@ assert_code 200 "$code" "GET /health/ready"
 echo
 echo "[2] get_current_time — 无 capability 限制，M3 回归"
 RID=$(submit "What is the current UTC time? Use the get_current_time tool and tell me the result.")
+pass=$((pass+1))
 echo "  run id = $RID"
 wait_succeeded "$RID" "get_current_time"
 
@@ -73,6 +76,7 @@ wait_succeeded "$RID" "get_current_time"
 echo
 echo "[3] http_fetch — network capability"
 RID=$(submit "Fetch https://httpbin.org/json using the http_fetch tool and summarise what you got back.")
+pass=$((pass+1))
 echo "  run id = $RID"
 wait_succeeded "$RID" "http_fetch"
 
@@ -82,6 +86,7 @@ echo "[4] file_read — fs_read capability"
 mkdir -p /tmp/agent_files
 printf 'M4 test: hello from agent platform runtime' > /tmp/agent_files/hello.txt
 RID=$(submit "Read the file hello.txt using the file_read tool and tell me exactly what it says.")
+pass=$((pass+1))
 echo "  run id = $RID"
 wait_succeeded "$RID" "file_read"
 
