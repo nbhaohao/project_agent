@@ -14,7 +14,7 @@ from app.application.run_service import RunService
 from app.domain.message import RunMessage
 from app.domain.run import Run, RunStatus
 from app.infrastructure.db import SessionLocal
-from app.infrastructure.redis import redis_client
+from app.infrastructure.redis import pubsub_redis, redis_client
 from app.infrastructure.repositories import SqlAlchemyMessageRepository, SqlAlchemyRunRepository
 from app.interface.api.deps import get_run_service
 
@@ -92,7 +92,7 @@ async def _event_stream(run: Run, history: list[RunMessage]) -> AsyncIterator[st
         return
 
     # subscribe to real-time events from worker
-    pubsub = redis_client.pubsub()
+    pubsub = pubsub_redis.pubsub()
     await pubsub.subscribe(f"run:{run.id}:events")
     try:
         async for message in pubsub.listen():
