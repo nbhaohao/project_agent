@@ -87,4 +87,4 @@ async def test_worker_unknown_run_is_skipped(monkeypatch):
     monkeypatch.setattr(repo_module, "SqlAlchemyRunRepository", lambda s: _EmptyRepo())
 
     # Should return without raising
-    await _process_one(unknown_id, queue=None)
+    await _process_one(unknown_id)

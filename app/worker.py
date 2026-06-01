@@ -24,7 +24,7 @@ async def _fake_agent(input: str) -> None:
     await asyncio.sleep(2)
 
 
-async def _process_one(run_id, queue: RedisRunQueue) -> None:
+async def _process_one(run_id) -> None:
     async with SessionLocal() as session, session.begin():
         repo = SqlAlchemyRunRepository(session)
         run = await repo.get(run_id)
@@ -63,7 +63,7 @@ async def run_worker() -> None:
         run_id = await queue.dequeue(timeout=5)
         if run_id is None:
             continue
-        await _process_one(run_id, queue)
+        await _process_one(run_id)
 
 
 def main() -> None:
