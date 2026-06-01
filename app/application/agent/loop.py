@@ -6,6 +6,7 @@ no compaction, no memory, no sub-agents (those come in M7/M8/M9).
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,6 +14,10 @@ if TYPE_CHECKING:
     from app.application.ports import LLMClient
 
 MAX_ITERATIONS = 50
+
+
+async def _noop(*_: object) -> None:
+    pass
 
 
 def _extract_text(content: list) -> str:
@@ -33,7 +38,14 @@ class AgentLoop:
         self._registry = registry
         self._max_iterations = max_iterations
 
-    async def run(self, input: str, system: str = "") -> str:
+    async def run(
+        self,
+        input: str,
+        system: str = "",
+        on_message: Callable[..., Awaitable[None]] = _noop,
+    ) -> str:
+        # Normalise initial user input to list-of-blocks for consistent storage
+        await on_message("user", [{"type": "text", "text": input}])
         messages: list[dict] = [{"role": "user", "content": input}]
 
         for _ in range(self._max_iterations):
@@ -42,6 +54,7 @@ class AgentLoop:
                 tools=self._registry.schemas(),
                 system=system,
             )
+            await on_message("assistant", response.content)
             messages.append({"role": "assistant", "content": response.content})
 
             if response.stop_reason != "tool_use":
@@ -59,6 +72,7 @@ class AgentLoop:
                         "tool_use_id": block.id,
                         "content": output,
                     })
+            await on_message("user", results)
             messages.append({"role": "user", "content": results})
 
         raise RuntimeError(

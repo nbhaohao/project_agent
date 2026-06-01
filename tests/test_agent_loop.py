@@ -90,6 +90,29 @@ async def test_raises_on_max_iterations():
         await loop.run("go")
 
 
+async def test_on_message_called_for_each_turn():
+    calls: list[tuple[str, object]] = []
+
+    async def capture(role: str, content: object) -> None:
+        calls.append((role, content))
+
+    loop = _loop([
+        FakeResponse(
+            [FakeBlock("tool_use", id="t1", name="get_current_time", input={})],
+            "tool_use",
+        ),
+        FakeResponse([FakeBlock("text", text="Done.")], "end_turn"),
+    ])
+    await loop.run("go", on_message=capture)
+
+    # user(initial) → assistant(tool_use) → user(tool_result) → assistant(text)
+    assert len(calls) == 4
+    assert calls[0][0] == "user"       # initial input normalised to list
+    assert calls[1][0] == "assistant"  # tool_use block
+    assert calls[2][0] == "user"       # tool_result
+    assert calls[3][0] == "assistant"  # final text
+
+
 async def test_unknown_tool_returns_error_string_not_raise():
     loop = _loop([
         FakeResponse(
