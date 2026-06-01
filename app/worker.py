@@ -1,16 +1,17 @@
 """Worker entrypoint — consumes runs from Redis queue and executes them.
 
 Run as a separate process:
-    python -m app.worker
-
-M2: agent is a stub (sleep + echo). Real LLM loop comes in M3.
+    uv run python -m app.worker
 """
 
 import asyncio
 import logging
 import signal
 
+from app.application.agent.loop import AgentLoop
+from app.application.agent.tools import TOOLS_SCHEMA, dispatch_tool
 from app.infrastructure.db import SessionLocal
+from app.infrastructure.llm import AnthropicLLMClient
 from app.infrastructure.queue import RedisRunQueue
 from app.infrastructure.redis import redis_client
 from app.infrastructure.repositories import SqlAlchemyRunRepository
@@ -18,10 +19,12 @@ from app.infrastructure.repositories import SqlAlchemyRunRepository
 logger = logging.getLogger(__name__)
 
 
-async def _fake_agent(input: str) -> None:
-    """Stub — simulates agent work without calling an LLM."""
-    logger.info("agent stub running for input=%r", input)
-    await asyncio.sleep(2)
+def _build_loop() -> AgentLoop:
+    return AgentLoop(
+        llm=AnthropicLLMClient(),
+        tools=TOOLS_SCHEMA,
+        dispatch=dispatch_tool,
+    )
 
 
 async def _process_one(run_id) -> None:
@@ -35,25 +38,26 @@ async def _process_one(run_id) -> None:
         await repo.update(run)
         saved_input = run.input
 
+    result: str | None = None
+    error: str | None = None
     try:
-        await _fake_agent(saved_input)
-        status = "succeeded"
-    except Exception:
+        result = await _build_loop().run(saved_input)
+    except Exception as exc:
         logger.exception("agent failed for run %s", run_id)
-        status = "failed"
+        error = str(exc)
 
     async with SessionLocal() as session, session.begin():
         repo = SqlAlchemyRunRepository(session)
         run = await repo.get(run_id)
         if run is None:
             return
-        if status == "succeeded":
-            run.mark_succeeded()
+        if error is None:
+            run.mark_succeeded(result)
         else:
-            run.mark_failed()
+            run.mark_failed(error)
         await repo.update(run)
 
-    logger.info("run %s → %s", run_id, status)
+    logger.info("run %s → %s", run_id, "succeeded" if error is None else "failed")
 
 
 async def run_worker() -> None:
