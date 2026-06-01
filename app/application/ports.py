@@ -6,6 +6,7 @@ Infrastructure provides the adapters; the application never imports infra direct
 import uuid
 from typing import Any, Protocol
 
+from app.domain.message import RunMessage
 from app.domain.run import Run
 
 
@@ -23,6 +24,11 @@ class RunQueue(Protocol):
     async def enqueue(self, run_id: uuid.UUID) -> None: ...
 
     async def dequeue(self, timeout: int = 5) -> uuid.UUID | None: ...
+
+
+class MessageRepository(Protocol):
+    async def add(self, message: RunMessage) -> None: ...
+    async def list_for_run(self, run_id: uuid.UUID) -> list[RunMessage]: ...
 
 
 class LLMClient(Protocol):

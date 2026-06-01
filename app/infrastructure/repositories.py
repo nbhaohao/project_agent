@@ -5,8 +5,9 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.message import RunMessage
 from app.domain.run import Run
-from app.infrastructure.models import RunORM
+from app.infrastructure.models import RunMessageORM, RunORM
 
 
 def _to_orm(run: Run) -> RunORM:
@@ -24,6 +25,39 @@ def _to_domain(orm: RunORM) -> Run:
         result=orm.result,
         error=orm.error,
     )
+
+
+class SqlAlchemyMessageRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(self, message: RunMessage) -> None:
+        self._session.add(RunMessageORM(
+            id=message.id,
+            run_id=message.run_id,
+            seq=message.seq,
+            role=message.role,
+            content=message.content,
+            created_at=message.created_at,
+        ))
+
+    async def list_for_run(self, run_id: uuid.UUID) -> list[RunMessage]:
+        result = await self._session.execute(
+            select(RunMessageORM)
+            .where(RunMessageORM.run_id == run_id)
+            .order_by(RunMessageORM.seq)
+        )
+        return [
+            RunMessage(
+                id=orm.id,
+                run_id=orm.run_id,
+                seq=orm.seq,
+                role=orm.role,
+                content=orm.content,
+                created_at=orm.created_at,
+            )
+            for orm in result.scalars().all()
+        ]
 
 
 class SqlAlchemyRunRepository:
