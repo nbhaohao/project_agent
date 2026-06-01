@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Platform Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    h1 { font-size: 1.4rem; color: #94a3b8; margin-bottom: 1.5rem; letter-spacing: .05em; }
+
+    #panel {
+      width: 100%;
+      max-width: 760px;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    textarea {
+      width: 100%;
+      height: 80px;
+      padding: .75rem;
+      background: #1e2030;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font: inherit;
+      font-size: .9rem;
+      resize: vertical;
+      outline: none;
+    }
+    textarea:focus { border-color: #6366f1; }
+
+    #presets {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: .45rem .9rem;
+      border: 1px solid #334155;
+      border-radius: 5px;
+      background: #1e2030;
+      color: #94a3b8;
+      font: inherit;
+      font-size: .82rem;
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+    button:hover { border-color: #6366f1; color: #c7d2fe; }
+
+    #submit-btn {
+      align-self: flex-end;
+      padding: .55rem 1.4rem;
+      background: #6366f1;
+      border-color: #6366f1;
+      color: #fff;
+      font-size: .9rem;
+    }
+    #submit-btn:hover { background: #818cf8; border-color: #818cf8; color: #fff; }
+    #submit-btn:disabled { opacity: .4; cursor: default; }
+
+    #stream {
+      width: 100%;
+      max-width: 760px;
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+      margin-top: .5rem;
+    }
+
+    .evt {
+      padding: .6rem .85rem;
+      border-radius: 5px;
+      font-size: .85rem;
+      line-height: 1.5;
+      border-left: 3px solid transparent;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .evt-text       { background: #1e2030; border-color: #6366f1; }
+    .evt-tool_call  { background: #162032; border-color: #0ea5e9; color: #7dd3fc; }
+    .evt-tool_result{ background: #161f16; border-color: #22c55e; color: #86efac; }
+    .evt-done       { background: #162032; border-color: #22c55e; color: #4ade80; font-weight: 600; }
+    .evt-error      { background: #1f1520; border-color: #ef4444; color: #fca5a5; }
+    .evt-status     { color: #475569; font-size: .78rem; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>Agent Platform — highlight reel</h1>
+
+  <div id="panel">
+    <textarea id="input" placeholder="Describe what you want the agent to do…"></textarea>
+
+    <div id="presets">
+      <button onclick="preset('What is the current UTC time? Use the get_current_time tool.')">⏱ Current time</button>
+      <button onclick="preset('Fetch https://httpbin.org/json using the http_fetch tool and summarise the response.')">🌐 Fetch URL</button>
+      <button onclick="preset('Read the file hello.txt using the file_read tool and tell me exactly what it says.')">📄 Read file</button>
+    </div>
+
+    <button id="submit-btn" onclick="submitRun()">▶ Run</button>
+  </div>
+
+  <div id="stream"></div>
+
+  <script>
+    const inputEl  = document.getElementById('input');
+    const streamEl = document.getElementById('stream');
+    const submitBtn = document.getElementById('submit-btn');
+
+    function preset(text) { inputEl.value = text; }
+
+    function addEvent(type, html) {
+      const div = document.createElement('div');
+      div.className = `evt evt-${type}`;
+      div.innerHTML = html;
+      streamEl.appendChild(div);
+      div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+
+    function esc(s) {
+      return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function submitRun() {
+      const input = inputEl.value.trim();
+      if (!input) return;
+
+      streamEl.innerHTML = '';
+      submitBtn.disabled = true;
+      addEvent('status', '⏳ Submitting…');
+
+      let runId;
+      try {
+        const res = await fetch('/runs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        ({ id: runId } = await res.json());
+      } catch (e) {
+        streamEl.innerHTML = '';
+        addEvent('error', `❌ Submit failed: ${esc(e.message)}`);
+        submitBtn.disabled = false;
+        return;
+      }
+
+      streamEl.innerHTML = '';
+      addEvent('status', `run ${runId}`);
+
+      const es = new EventSource(`/runs/${runId}/events`);
+
+      es.onmessage = (e) => {
+        const evt = JSON.parse(e.data);
+        if (evt.type === 'text') {
+          addEvent('text', esc(evt.text));
+        } else if (evt.type === 'tool_call') {
+          const args = JSON.stringify(evt.input, null, 2);
+          addEvent('tool_call', `🔧 <b>${esc(evt.tool)}</b>\n${esc(args)}`);
+        } else if (evt.type === 'tool_result') {
+          addEvent('tool_result', `↩ ${esc(evt.output)}`);
+        } else if (evt.type === 'done') {
+          addEvent('done', `✅ Done`);
+          es.close();
+          submitBtn.disabled = false;
+        } else if (evt.type === 'error') {
+          addEvent('error', `❌ ${esc(evt.error)}`);
+          es.close();
+          submitBtn.disabled = false;
+        }
+      };
+
+      es.onerror = () => {
+        es.close();
+        addEvent('error', '❌ Stream disconnected');
+        submitBtn.disabled = false;
+      };
+    }
+  </script>
+</body>
+</html>
