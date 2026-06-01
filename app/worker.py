@@ -7,16 +7,55 @@ Run as a separate process:
 import asyncio
 import logging
 import signal
+import uuid
 
+from app.application.agent.events import derive_events
 from app.application.agent.loop import AgentLoop
 from app.application.agent.tools.builtin import build_registry
+from app.domain.message import RunMessage
 from app.infrastructure.db import SessionLocal
+from app.infrastructure.event_bus import RedisEventBus
 from app.infrastructure.llm import AnthropicLLMClient
 from app.infrastructure.queue import RedisRunQueue
 from app.infrastructure.redis import redis_client
-from app.infrastructure.repositories import SqlAlchemyRunRepository
+from app.infrastructure.repositories import SqlAlchemyMessageRepository, SqlAlchemyRunRepository
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_content(content: object) -> list[dict]:
+    """Convert Anthropic SDK block objects (or dicts) to plain dicts for storage."""
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    result = []
+    for block in content:  # type: ignore[union-attr]
+        if isinstance(block, dict):
+            result.append(block)
+        elif hasattr(block, "model_dump"):
+            result.append(block.model_dump())
+        else:
+            result.append({"type": getattr(block, "type", "unknown")})
+    return result
+
+
+def _make_on_message(run_id: uuid.UUID, event_bus: RedisEventBus):
+    """Return an async callback that persists each message and publishes events."""
+    seq = 0
+
+    async def on_message(role: str, content: object) -> None:
+        nonlocal seq
+        content_dicts = _normalize_content(content)
+
+        msg = RunMessage.create(run_id=run_id, seq=seq, role=role, content=content_dicts)
+        async with SessionLocal() as session, session.begin():
+            await SqlAlchemyMessageRepository(session).add(msg)
+
+        for event in derive_events(msg):
+            await event_bus.publish(run_id, event)
+
+        seq += 1
+
+    return on_message
 
 
 def _build_loop() -> AgentLoop:
@@ -26,7 +65,7 @@ def _build_loop() -> AgentLoop:
     )
 
 
-async def _process_one(run_id) -> None:
+async def _process_one(run_id: uuid.UUID, event_bus: RedisEventBus) -> None:
     async with SessionLocal() as session, session.begin():
         repo = SqlAlchemyRunRepository(session)
         run = await repo.get(run_id)
@@ -37,10 +76,12 @@ async def _process_one(run_id) -> None:
         await repo.update(run)
         saved_input = run.input
 
+    on_message = _make_on_message(run_id, event_bus)
+
     result: str | None = None
     error: str | None = None
     try:
-        result = await _build_loop().run(saved_input)
+        result = await _build_loop().run(saved_input, on_message=on_message)
     except Exception as exc:
         logger.exception("agent failed for run %s", run_id)
         error = str(exc)
@@ -56,18 +97,25 @@ async def _process_one(run_id) -> None:
             run.mark_failed(error)
         await repo.update(run)
 
+    # publish terminal event so SSE handler knows the stream is finished
+    if error is None:
+        await event_bus.publish(run_id, {"type": "done", "result": result or ""})
+    else:
+        await event_bus.publish(run_id, {"type": "error", "error": error})
+
     logger.info("run %s → %s", run_id, "succeeded" if error is None else "failed")
 
 
 async def run_worker() -> None:
     queue = RedisRunQueue(redis_client)
+    event_bus = RedisEventBus(redis_client)
     logger.info("worker started, waiting for runs…")
     while True:
         try:
             run_id = await queue.dequeue(timeout=5)
             if run_id is None:
                 continue
-            await _process_one(run_id)
+            await _process_one(run_id, event_bus)
         except Exception:
             logger.exception("unexpected error in worker loop, continuing")
 

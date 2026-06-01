@@ -86,5 +86,8 @@ async def test_worker_unknown_run_is_skipped(monkeypatch):
     from app.infrastructure import repositories as repo_module
     monkeypatch.setattr(repo_module, "SqlAlchemyRunRepository", lambda s: _EmptyRepo())
 
+    class _FakeEventBus:
+        async def publish(self, run_id, event): pass
+
     # Should return without raising
-    await _process_one(unknown_id)
+    await _process_one(unknown_id, _FakeEventBus())
