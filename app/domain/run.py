@@ -1,9 +1,4 @@
-"""Run domain model — one agent execution.
-
-M1 scope: a Run can only be *submitted* (born QUEUED) and read back.
-State transitions (mark_running / mark_succeeded / ...) are intentionally NOT
-here yet — no code drives them until the M2 worker exists (YAGNI).
-"""
+"""Run domain model — one agent execution."""
 
 from __future__ import annotations
 
@@ -26,6 +21,10 @@ class RunStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class InvalidTransition(Exception):
+    pass
+
+
 @dataclass
 class Run:
     id: uuid.UUID
@@ -41,3 +40,18 @@ class Run:
             status=RunStatus.QUEUED,
             created_at=datetime.now(UTC),
         )
+
+    def mark_running(self) -> None:
+        if self.status is not RunStatus.QUEUED:
+            raise InvalidTransition(f"cannot mark running from {self.status}")
+        self.status = RunStatus.RUNNING
+
+    def mark_succeeded(self) -> None:
+        if self.status is not RunStatus.RUNNING:
+            raise InvalidTransition(f"cannot mark succeeded from {self.status}")
+        self.status = RunStatus.SUCCEEDED
+
+    def mark_failed(self) -> None:
+        if self.status is not RunStatus.RUNNING:
+            raise InvalidTransition(f"cannot mark failed from {self.status}")
+        self.status = RunStatus.FAILED

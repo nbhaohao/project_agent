@@ -1,9 +1,11 @@
-"""Run domain — submit factory produces a well-formed QUEUED run with a uuid7 id."""
+"""Run domain — submit factory + state machine transitions."""
 
 import time
 from datetime import datetime
 
-from app.domain.run import Run, RunStatus
+import pytest
+
+from app.domain.run import InvalidTransition, Run, RunStatus
 
 
 def test_submit_creates_queued_run():
@@ -24,3 +26,24 @@ def test_submit_ids_are_uuid7_and_time_ordered():
     assert earlier.id != later.id
     # uuid7 is time-ordered at millisecond granularity (B-tree-friendly inserts)
     assert later.id > earlier.id
+
+
+def test_happy_path_state_transitions():
+    run = Run.submit("do a thing")
+    run.mark_running()
+    assert run.status is RunStatus.RUNNING
+    run.mark_succeeded()
+    assert run.status is RunStatus.SUCCEEDED
+
+
+def test_happy_path_failure_transition():
+    run = Run.submit("do a thing")
+    run.mark_running()
+    run.mark_failed()
+    assert run.status is RunStatus.FAILED
+
+
+def test_invalid_transition_raises():
+    run = Run.submit("do a thing")
+    with pytest.raises(InvalidTransition):
+        run.mark_succeeded()  # can't skip RUNNING
