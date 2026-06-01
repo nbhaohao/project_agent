@@ -1,4 +1,7 @@
-"""Run domain model — one agent execution."""
+"""Run domain model — one agent execution.
+
+M3: added result/error fields; mark_succeeded/mark_failed now store the outcome.
+"""
 
 from __future__ import annotations
 
@@ -31,6 +34,8 @@ class Run:
     input: str
     status: RunStatus
     created_at: datetime
+    result: str | None = None
+    error: str | None = None
 
     @classmethod
     def submit(cls, input: str) -> Run:
@@ -46,12 +51,14 @@ class Run:
             raise InvalidTransition(f"cannot mark running from {self.status}")
         self.status = RunStatus.RUNNING
 
-    def mark_succeeded(self) -> None:
+    def mark_succeeded(self, result: str | None = None) -> None:
         if self.status is not RunStatus.RUNNING:
             raise InvalidTransition(f"cannot mark succeeded from {self.status}")
         self.status = RunStatus.SUCCEEDED
+        self.result = result
 
-    def mark_failed(self) -> None:
+    def mark_failed(self, error: str | None = None) -> None:
         if self.status is not RunStatus.RUNNING:
             raise InvalidTransition(f"cannot mark failed from {self.status}")
         self.status = RunStatus.FAILED
+        self.error = error
