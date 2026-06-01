@@ -13,12 +13,14 @@ from app.infrastructure.repositories import SqlAlchemyRunRepository
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    # One transaction per request: commit on success, rollback on exception.
-    async with SessionLocal() as session, session.begin():
+    # Transaction boundary is owned by the use case (RunService), not the request:
+    # submit() must commit the run BEFORE enqueueing it, so the request can't hold
+    # an open transaction across the enqueue.
+    async with SessionLocal() as session:
         yield session
 
 
 def get_run_service(
     session: AsyncSession = Depends(get_session),
 ) -> RunService:
-    return RunService(SqlAlchemyRunRepository(session), RedisRunQueue(redis_client))
+    return RunService(session, SqlAlchemyRunRepository(session), RedisRunQueue(redis_client))

@@ -2,18 +2,25 @@
 
 import uuid
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.application.ports import RunQueue, RunRepository
 from app.domain.run import Run
 
 
 class RunService:
-    def __init__(self, runs: RunRepository, queue: RunQueue) -> None:
+    def __init__(self, session: AsyncSession, runs: RunRepository, queue: RunQueue) -> None:
+        self._session = session
         self._runs = runs
         self._queue = queue
 
     async def submit(self, input: str) -> Run:
         run = Run.submit(input)
         await self._runs.add(run)
+        # Persist BEFORE enqueue: the worker pulls the id from Redis and
+        # immediately SELECTs the run. If we enqueue before commit, the worker
+        # races ahead and sees no row → "run not found, skipping".
+        await self._session.commit()
         await self._queue.enqueue(run.id)
         return run
 

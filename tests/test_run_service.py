@@ -25,24 +25,36 @@ class FakeRunRepository:
 
 
 class FakeRunQueue:
-    def __init__(self) -> None:
+    def __init__(self, log: list[str]) -> None:
         self.enqueued: list[uuid.UUID] = []
+        self._log = log
 
     async def enqueue(self, run_id: uuid.UUID) -> None:
+        self._log.append("enqueue")
         self.enqueued.append(run_id)
 
     async def dequeue(self, timeout: int = 5) -> uuid.UUID | None:
         return self.enqueued.pop(0) if self.enqueued else None
 
 
-def _make_service() -> tuple[RunService, FakeRunRepository, FakeRunQueue]:
+class FakeSession:
+    def __init__(self, log: list[str]) -> None:
+        self._log = log
+
+    async def commit(self) -> None:
+        self._log.append("commit")
+
+
+def _make_service() -> tuple[RunService, FakeRunRepository, FakeRunQueue, list[str]]:
+    log: list[str] = []
     repo = FakeRunRepository()
-    queue = FakeRunQueue()
-    return RunService(repo, queue), repo, queue
+    queue = FakeRunQueue(log)
+    session = FakeSession(log)
+    return RunService(session, repo, queue), repo, queue, log
 
 
 async def test_submit_persists_queued_run():
-    service, repo, queue = _make_service()
+    service, repo, queue, _ = _make_service()
 
     run = await service.submit("do a thing")
 
@@ -51,21 +63,31 @@ async def test_submit_persists_queued_run():
 
 
 async def test_submit_enqueues_run_id():
-    service, repo, queue = _make_service()
+    service, repo, queue, _ = _make_service()
 
     run = await service.submit("do a thing")
 
     assert run.id in queue.enqueued
 
 
+async def test_submit_commits_before_enqueue():
+    # Guards the worker race: the run must be committed to the DB before its id
+    # lands in the queue, otherwise the worker SELECTs a row that isn't there yet.
+    service, _, _, log = _make_service()
+
+    await service.submit("do a thing")
+
+    assert log == ["commit", "enqueue"]
+
+
 async def test_get_unknown_returns_none():
-    service, _, _ = _make_service()
+    service, _, _, _ = _make_service()
 
     assert await service.get(uuid.uuid4()) is None
 
 
 async def test_list_returns_submitted_runs():
-    service, _, _ = _make_service()
+    service, _, _, _ = _make_service()
     await service.submit("a")
     await service.submit("b")
 
