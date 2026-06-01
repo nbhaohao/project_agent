@@ -60,7 +60,7 @@ async def get_run(
 
 @router.get("/{run_id}/events")
 async def run_events(run_id: uuid.UUID) -> StreamingResponse:
-    async with SessionLocal() as session:
+    async with SessionLocal() as session, session.begin():
         run = await SqlAlchemyRunRepository(session).get(run_id)
         if run is None:
             raise HTTPException(status_code=404, detail="run not found")
