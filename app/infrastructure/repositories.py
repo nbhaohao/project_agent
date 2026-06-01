@@ -17,7 +17,12 @@ def _to_orm(run: Run) -> RunORM:
 
 def _to_domain(orm: RunORM) -> Run:
     return Run(
-        id=orm.id, input=orm.input, status=orm.status, created_at=orm.created_at
+        id=orm.id,
+        input=orm.input,
+        status=orm.status,
+        created_at=orm.created_at,
+        result=orm.result,
+        error=orm.error,
     )
 
 
@@ -46,3 +51,5 @@ class SqlAlchemyRunRepository:
         if orm is None:
             raise ValueError(f"Run {run.id} not found")
         orm.status = run.status
+        orm.result = run.result
+        orm.error = run.error

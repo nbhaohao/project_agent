@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, String
+from sqlalchemy import DateTime, Enum, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.run import RunStatus
@@ -20,3 +20,5 @@ class RunORM(Base):
         Enum(RunStatus, name="run_status", values_callable=lambda e: [m.value for m in e])
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

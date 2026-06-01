@@ -24,6 +24,8 @@ class RunResponse(BaseModel):
     input: str
     status: RunStatus
     created_at: datetime
+    result: str | None = None
+    error: str | None = None
 
 
 @router.post("", response_model=RunResponse, status_code=201)
