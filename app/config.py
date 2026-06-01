@@ -16,7 +16,10 @@ class Settings(BaseSettings):
     # LLM — reuse my-agent DeepSeek config (ANTHROPIC_BASE_URL points to DeepSeek)
     anthropic_api_key: str = ""
     anthropic_base_url: str = ""
-    model_id: str = "claude-opus-4-8"
+    model_id: str = "deepseek-v4-flash"
+
+    # file_read tool: restrict reads to this directory
+    tool_fs_root: str = "/tmp/agent_files"
 
 
 settings = Settings()
