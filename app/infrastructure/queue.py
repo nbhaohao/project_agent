@@ -3,6 +3,7 @@
 import uuid
 
 from redis.asyncio import Redis
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 QUEUE_KEY = "runs:pending"
 
@@ -15,7 +16,11 @@ class RedisRunQueue:
         await self._client.lpush(QUEUE_KEY, str(run_id))
 
     async def dequeue(self, timeout: int = 5) -> uuid.UUID | None:
-        result = await self._client.brpop(QUEUE_KEY, timeout=timeout)
+        try:
+            result = await self._client.brpop(QUEUE_KEY, timeout=timeout)
+        except RedisTimeoutError:
+            # socket timeout fired at the same instant as BRPOP timeout — treat as empty
+            return None
         if result is None:
             return None
         _, value = result

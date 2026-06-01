@@ -63,10 +63,13 @@ async def run_worker() -> None:
     queue = RedisRunQueue(redis_client)
     logger.info("worker started, waiting for runs…")
     while True:
-        run_id = await queue.dequeue(timeout=5)
-        if run_id is None:
-            continue
-        await _process_one(run_id)
+        try:
+            run_id = await queue.dequeue(timeout=5)
+            if run_id is None:
+                continue
+            await _process_one(run_id)
+        except Exception:
+            logger.exception("unexpected error in worker loop, continuing")
 
 
 def main() -> None:
