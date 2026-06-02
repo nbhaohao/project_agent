@@ -70,6 +70,12 @@ async def cancel_run_endpoint(
     run = await cancel_run(run_id, runs=repo, signal=signal, session=session)
     if run is None:
         raise HTTPException(status_code=404, detail="run not found")
+    if run.status is RunStatus.CANCELLED:
+        # QUEUED→CANCELLED: worker never ran, so no one publishes the terminal event.
+        # Publish here so any open SSE stream can close immediately.
+        # (RUNNING→CANCELLED: worker publishes it when it catches RunCancelled.)
+        from app.infrastructure.event_bus import RedisEventBus
+        await RedisEventBus(redis_client).publish(run_id, {"type": "cancelled"})
     return RunResponse.model_validate(run)
 
 
