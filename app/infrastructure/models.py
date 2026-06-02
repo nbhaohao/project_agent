@@ -3,6 +3,7 @@
 import uuid
 from datetime import datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, Enum, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -19,6 +20,15 @@ class RunMessageORM(Base):
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[list] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MemoryORM(Base):
+    __tablename__ = "memories"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list] = mapped_column(Vector(1024), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

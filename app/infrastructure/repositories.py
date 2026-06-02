@@ -5,9 +5,37 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.memory import Memory
 from app.domain.message import RunMessage
 from app.domain.run import Run
-from app.infrastructure.models import RunMessageORM, RunORM
+from app.infrastructure.db import SessionLocal
+from app.infrastructure.models import MemoryORM, RunMessageORM, RunORM
+
+
+class SqlAlchemyMemoryRepository:
+    """Manages its own sessions — memory ops are called from tool handlers inside
+    the agent loop, which has no ambient session context."""
+
+    async def add(self, memory: Memory, embedding: list[float]) -> None:
+        async with SessionLocal() as session, session.begin():
+            session.add(MemoryORM(
+                id=memory.id,
+                content=memory.content,
+                embedding=embedding,
+                created_at=memory.created_at,
+            ))
+
+    async def search(self, embedding: list[float], top_k: int = 5) -> list[Memory]:
+        async with SessionLocal() as session, session.begin():
+            result = await session.execute(
+                select(MemoryORM)
+                .order_by(MemoryORM.embedding.cosine_distance(embedding))
+                .limit(top_k)
+            )
+            return [
+                Memory(id=orm.id, content=orm.content, created_at=orm.created_at)
+                for orm in result.scalars().all()
+            ]
 
 
 def _to_orm(run: Run) -> RunORM:
