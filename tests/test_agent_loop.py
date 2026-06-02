@@ -6,6 +6,7 @@ import pytest
 
 from app.application.agent.loop import AgentLoop
 from app.application.agent.tools.base import Tool, ToolRegistry
+from app.domain.run import RunCancelled
 
 
 @dataclass
@@ -111,6 +112,36 @@ async def test_on_message_called_for_each_turn():
     assert calls[1][0] == "assistant"  # tool_use block
     assert calls[2][0] == "user"       # tool_result
     assert calls[3][0] == "assistant"  # final text
+
+
+async def test_should_cancel_raises_run_cancelled():
+    loop = _loop([FakeResponse([FakeBlock("text", text="Hello!")], "end_turn")])
+
+    async def always_cancel() -> bool:
+        return True
+
+    with pytest.raises(RunCancelled):
+        await loop.run("go", should_cancel=always_cancel)
+
+
+async def test_should_cancel_checked_before_llm_call():
+    # Cancels on iteration 2 — LLM is only called once (first iteration completes)
+    calls = 0
+
+    async def cancel_on_second() -> bool:
+        nonlocal calls
+        calls += 1
+        return calls >= 2
+
+    loop = _loop([
+        FakeResponse(
+            [FakeBlock("tool_use", id="t1", name="get_current_time", input={})],
+            "tool_use",
+        ),
+        FakeResponse([FakeBlock("text", text="Done.")], "end_turn"),
+    ])
+    with pytest.raises(RunCancelled):
+        await loop.run("go", should_cancel=cancel_on_second)
 
 
 async def test_unknown_tool_returns_error_string_not_raise():

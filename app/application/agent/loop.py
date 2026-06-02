@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from app.domain.run import RunCancelled
+
 if TYPE_CHECKING:
     from app.application.agent.tools.base import ToolRegistry
     from app.application.ports import LLMClient
@@ -18,6 +20,10 @@ MAX_ITERATIONS = 50
 
 async def _noop(*_: object) -> None:
     pass
+
+
+async def _no_cancel() -> bool:
+    return False
 
 
 def _extract_text(content: list) -> str:
@@ -43,12 +49,15 @@ class AgentLoop:
         input: str,
         system: str = "",
         on_message: Callable[..., Awaitable[None]] = _noop,
+        should_cancel: Callable[[], Awaitable[bool]] = _no_cancel,
     ) -> str:
         # Normalise initial user input to list-of-blocks for consistent storage
         await on_message("user", [{"type": "text", "text": input}])
         messages: list[dict] = [{"role": "user", "content": input}]
 
         for _ in range(self._max_iterations):
+            if await should_cancel():
+                raise RunCancelled("run was cancelled")
             response = await self._llm.complete(
                 messages=messages,
                 tools=self._registry.schemas(),
