@@ -50,7 +50,7 @@ wait_terminal() {
     curl -s -o "$BODY" "$BASE/runs/$rid" > /dev/null
     local status
     status=$(json "['status']")
-    echo "  t=${i}s status=$status"
+    echo "  t=${i}s status=$status" >&2
     if [ "$status" = "succeeded" ] || [ "$status" = "failed" ] || [ "$status" = "cancelled" ]; then
       break
     fi
