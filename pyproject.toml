@@ -13,6 +13,7 @@ dependencies = [
     "anthropic>=0.49",
     "redis>=5.2",
     "httpx>=0.28",
+    "pgvector>=0.3",
 ]
 
 [dependency-groups]

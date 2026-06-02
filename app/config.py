@@ -21,5 +21,11 @@ class Settings(BaseSettings):
     # file_read tool: restrict reads to this directory
     tool_fs_root: str = "/tmp/agent_files"
 
+    # Embedding — OpenAI-compatible /embeddings endpoint (SiliconFlow bge-m3 by default)
+    embedding_api_key: str = ""
+    embedding_base_url: str = "https://api.siliconflow.cn/v1"
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dim: int = 1024
+
 
 settings = Settings()
