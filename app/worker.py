@@ -14,15 +14,21 @@ from collections.abc import Awaitable
 from app.application.agent.events import derive_events
 from app.application.agent.loop import AgentLoop
 from app.application.agent.tools.builtin import build_registry
+from app.application.agent.tools.memory import build_memory_tools
 from app.domain.message import RunMessage
 from app.domain.run import RunCancelled, RunStatus
 from app.infrastructure.cancel import RedisCancelSignal
 from app.infrastructure.db import SessionLocal
+from app.infrastructure.embedder import SiliconFlowEmbedder
 from app.infrastructure.event_bus import RedisEventBus
 from app.infrastructure.llm import AnthropicLLMClient
 from app.infrastructure.queue import RedisRunQueue
 from app.infrastructure.redis import redis_client
-from app.infrastructure.repositories import SqlAlchemyMessageRepository, SqlAlchemyRunRepository
+from app.infrastructure.repositories import (
+    SqlAlchemyMemoryRepository,
+    SqlAlchemyMessageRepository,
+    SqlAlchemyRunRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +69,10 @@ def _make_on_message(run_id: uuid.UUID, event_bus: RedisEventBus):
 
 
 def _build_loop() -> AgentLoop:
-    return AgentLoop(
-        llm=AnthropicLLMClient(),
-        registry=build_registry(allowed={"network", "fs_read"}),
-    )
+    registry = build_registry(allowed={"network", "fs_read"})
+    for tool in build_memory_tools(SiliconFlowEmbedder(), SqlAlchemyMemoryRepository()):
+        registry.register(tool)
+    return AgentLoop(llm=AnthropicLLMClient(), registry=registry)
 
 
 async def _run_cancellable(
