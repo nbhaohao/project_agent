@@ -53,12 +53,13 @@ curl localhost:8000/runs             # 列表
 
 - **M0 脚手架** ✅ docker-compose(pg/redis) + FastAPI + DDD-lite 四层 + health 探针
 - **M1 Run 模型** ✅ PostgreSQL + Alembic + 端口/适配器 + 提交/查询接口(uuid7 主键)
-- M2 Agent 执行循环进 worker(LLM↔工具核心) + Redis 队列异步下发
-- M3 工具系统/工具注册表 + 沙箱化工具执行
-- M4 SSE 流式(步骤/token/工具调用) + 最小前端"看 agent 跑"
-- M5 中断/取消运行中的 agent
-- M6 上下文工程(context 管理、compaction、消息历史)
-- M7 记忆 + RAG(pgvector + embedding)
-- M8 多 agent 编排(sub-agent / planner-executor / agent-as-tool)
-- M9 eval + guardrails(eval harness、trace_id、成本可观测)
-- M10 部署收口 + UI 打磨
+- **M2 异步执行管道** ✅ 独立 worker 进程 + Redis List(BRPOP) + Run 状态机
+- **M3 真 agent loop** ✅ LLM port + AsyncAnthropic 适配器 + AgentLoop + 工具调用
+- **M4 工具系统** ✅ Tool dataclass + ToolRegistry(capability 过滤+超时) + http_fetch/file_read
+- **M5 SSE 流式 + 前端** ✅ run_messages 表 + Redis Pub/Sub + SSE 端点 + vanilla 前端
+- **M6 中断/取消** ✅ CancelSignal port + 协作式取消 + watchdog Task + POST /runs/{id}/cancel
+- **M7 上下文工程** 🔄 context 管理、compaction、消息历史截断
+- M8 记忆 + RAG(pgvector + embedding，跨 run 长期记忆)
+- M9 多 agent 编排(sub-agent / planner-executor / agent-as-tool)
+- M10 eval + 可观测(eval harness、trace_id、成本追踪)
+- M11 部署收口 + UI 打磨

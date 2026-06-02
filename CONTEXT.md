@@ -1,7 +1,7 @@
 # Project Context
 
 > 把这个文件给任何 AI 助手读，它就能快速理解这个项目的背景、目标和当前状态。
-> 最后更新：2026-06-02（M6 完成）
+> 最后更新：2026-06-02（M7 进行中）
 
 ---
 
@@ -48,8 +48,8 @@ app/
 | M3 真 agent loop | ✅ 完成 | LLM port + AsyncAnthropic 适配器 + AgentLoop + get_current_time 工具 + result/error 持久化 |
 | M4 工具系统 | ✅ 完成 | Tool dataclass + ToolRegistry(capability 过滤+超时) + http_fetch/file_read + 路径穿越防护 |
 | M5 SSE 流式 + 前端 | ✅ 完成 | run_messages 表 + on_message 回调 + Redis Pub/Sub + SSE 端点 + vanilla 前端 |
-| **M6 中断/取消** | ✅ 完成 | CancelSignal port + RedisCancelSignal + 协作式取消(loop 每轮检查) + POST /runs/{id}/cancel + 前端取消按钮 |
-| M7 上下文工程 | 待做 | context 管理、compaction、消息历史 |
+| M6 中断/取消 | ✅ 完成 | CancelSignal port + RedisCancelSignal + 协作式取消(loop 每轮检查) + watchdog Task + POST /runs/{id}/cancel + 前端取消按钮 |
+| **M7 上下文工程** | 🔄 进行中 | context 管理、compaction、消息历史截断 |
 | M8 记忆 + RAG | 待做 | pgvector + embedding，跨 run 长期记忆 |
 | M9 多 agent 编排 | 待做 | sub-agent / planner-executor / agent-as-tool |
 | M10 eval + 可观测 | 待做 | eval harness、trace_id、成本追踪 |
@@ -80,8 +80,9 @@ project_agent/
 │   │   ├── ports.py                 # RunRepository / RunQueue / LLMClient / MessageRepository / CancelSignal Protocol
 │   │   ├── run_service.py           # submit / get / list 用例 + cancel_run()
 │   │   └── agent/
-│   │       ├── loop.py              # AgentLoop（接 ToolRegistry + on_message + should_cancel 回调）
+│   │       ├── loop.py              # AgentLoop（接 ToolRegistry + on_message + should_cancel 回调 + compaction）
 │   │       ├── events.py            # derive_events(RunMessage) → SSE 事件 dict 列表
+│   │       ├── compaction.py        # estimate_tokens + compact_messages（保头保尾策略）
 │   │       └── tools/
 │   │           ├── base.py          # Tool dataclass + ToolRegistry(capability 过滤+asyncio 超时)
 │   │           └── builtin.py       # get_current_time / http_fetch / file_read + build_registry()
@@ -101,7 +102,7 @@ project_agent/
 │   └── static/
 │       └── index.html               # vanilla 前端（亮色）：提交框 + 3 preset + Cancel 按钮 + EventSource 渲染
 ├── migrations/                      # Alembic 迁移（async env）
-├── tests/                           # 49 个单测（domain/service/loop/worker，无 DB/LLM 依赖）
+├── tests/                           # 57 个单测（domain/service/loop/worker/compaction，无 DB/LLM 依赖）
 ├── scripts/
 │   ├── e2e_m1.sh                    # M1 集成测试（curl 断言）
 │   ├── e2e_m2.sh                    # M2 集成测试（worker stub 全链路）
