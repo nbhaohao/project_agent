@@ -1,7 +1,7 @@
 # Project Context
 
 > 把这个文件给任何 AI 助手读，它就能快速理解这个项目的背景、目标和当前状态。
-> 最后更新：2026-06-02（M8 完成）
+> 最后更新：2026-06-03（M9 完成）
 
 ---
 
@@ -50,7 +50,8 @@ app/
 | M5 SSE 流式 + 前端 | ✅ 完成 | run_messages 表 + on_message 回调 + Redis Pub/Sub + SSE 端点 + vanilla 前端 |
 | M6 中断/取消 | ✅ 完成 | CancelSignal port + RedisCancelSignal + 协作式取消(loop 每轮检查) + watchdog Task + POST /runs/{id}/cancel + 前端取消按钮 |
 | M7 上下文工程 | ✅ 完成 | context 管理、compaction（保头保尾）、消息历史截断 |
-| **M8 记忆 + RAG** | ✅ 完成 | pgvector + SiliconFlow bge-m3 + remember/recall 工具 + 跨 run 语义检索 |
+| M8 记忆 + RAG | ✅ 完成 | pgvector + SiliconFlow bge-m3 + remember/recall 工具 + 跨 run 语义检索 |
+| **M9 多 agent 编排** | ✅ 完成 | agent-as-tool 模式 + SubAgentDefinition + researcher/summarizer 专家 + 递归深度=1 |
 | M9 多 agent 编排 | 待做 | sub-agent / planner-executor / agent-as-tool |
 | M10 eval + 可观测 | 待做 | eval harness、trace_id、成本追踪 |
 | M11 部署收口 | 待做 | Docker 化部署 + UI 打磨 |
@@ -83,6 +84,8 @@ project_agent/
 │   │       ├── loop.py              # AgentLoop（接 ToolRegistry + on_message + should_cancel 回调 + compaction）
 │   │       ├── events.py            # derive_events(RunMessage) → SSE 事件 dict 列表
 │   │       ├── compaction.py        # estimate_tokens + compact_messages（保头保尾策略）
+│   │       ├── subagent.py          # SubAgentDefinition + build_subagent_tool()（机制层）
+│   │       ├── specialists.py       # RESEARCHER/SUMMARIZER + build_subagent_tools()（策略层）
 │   │       └── tools/
 │   │           ├── memory.py        # build_memory_tools(embedder, repo) → remember/recall Tool
 │   │           ├── base.py          # Tool dataclass + ToolRegistry(capability 过滤+asyncio 超时)
@@ -104,7 +107,7 @@ project_agent/
 │   └── static/
 │       └── index.html               # vanilla 前端（亮色）：提交框 + 3 preset + Cancel 按钮 + EventSource 渲染
 ├── migrations/                      # Alembic 迁移（async env）
-├── tests/                           # 67 个单测（domain/service/loop/worker/compaction/memory，无 DB/LLM 依赖）
+├── tests/                           # 75 个单测（domain/service/loop/worker/compaction/memory/subagent，无 DB/LLM 依赖）
 ├── scripts/
 │   ├── e2e_m1.sh                    # M1 集成测试（curl 断言）
 │   ├── e2e_m2.sh                    # M2 集成测试（worker stub 全链路）
@@ -113,7 +116,8 @@ project_agent/
 │   ├── e2e_m5.sh                    # M5 集成测试（SSE 历史补发 + 事件类型验证 + 前端可访问）
 │   ├── e2e_m6.sh                    # M6 集成测试（QUEUED 取消 + cancelled SSE 事件 + 404）
 │   ├── e2e_m7.sh                    # （无独立 e2e，compaction 通过单测 + M8 e2e 隐式验证）
-│   └── e2e_m8.sh                    # M8 集成测试（remember→recall 跨 run RAG 链路验证）
+│   ├── e2e_m8.sh                    # M8 集成测试（remember→recall 跨 run RAG 链路验证）
+│   └── e2e_m9.sh                    # M9 集成测试（主 agent 委托 researcher sub-agent 全链路）
 ├── docker-compose.yml               # postgres:16 + redis:7
 ├── pyproject.toml                   # 依赖（fastapi/uvicorn/sqlalchemy/alembic/redis/anthropic）
 └── .env.example                     # 环境变量模板（DATABASE_URL/REDIS_URL/LLM 三键）

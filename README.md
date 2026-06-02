@@ -60,6 +60,7 @@ curl localhost:8000/runs             # 列表
 - **M6 中断/取消** ✅ CancelSignal port + 协作式取消 + watchdog Task + POST /runs/{id}/cancel
 - **M7 上下文工程** ✅ compaction（保头保尾）+ estimate_tokens + context_limit 参数
 - **M8 记忆 + RAG** ✅ pgvector + SiliconFlow bge-m3 + remember/recall 工具 + 跨 run 语义检索
+- **M9 多 agent 编排** ✅ agent-as-tool 模式 + researcher/summarizer 专家 + capability 隔离 + 递归深度=1
 - M9 多 agent 编排(sub-agent / planner-executor / agent-as-tool)
 - M10 eval + 可观测(eval harness、trace_id、成本追踪)
 - M11 部署收口 + UI 打磨
