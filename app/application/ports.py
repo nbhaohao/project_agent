@@ -6,6 +6,7 @@ Infrastructure provides the adapters; the application never imports infra direct
 import uuid
 from typing import Any, Protocol
 
+from app.domain.memory import Memory
 from app.domain.message import RunMessage
 from app.domain.run import Run
 
@@ -35,6 +36,16 @@ class CancelSignal(Protocol):
     async def request(self, run_id: uuid.UUID) -> None: ...
 
     async def is_requested(self, run_id: uuid.UUID) -> bool: ...
+
+
+class Embedder(Protocol):
+    async def embed(self, text: str) -> list[float]: ...
+
+
+class MemoryRepository(Protocol):
+    async def add(self, memory: Memory, embedding: list[float]) -> None: ...
+
+    async def search(self, embedding: list[float], top_k: int = 5) -> list[Memory]: ...
 
 
 class LLMClient(Protocol):
