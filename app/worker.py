@@ -5,9 +5,11 @@ Run as a separate process:
 """
 
 import asyncio
+import contextlib
 import logging
 import signal
 import uuid
+from collections.abc import Awaitable
 
 from app.application.agent.events import derive_events
 from app.application.agent.loop import AgentLoop
@@ -67,6 +69,40 @@ def _build_loop() -> AgentLoop:
     )
 
 
+async def _run_cancellable(
+    coro: Awaitable[str],
+    cancel_signal: RedisCancelSignal,
+    run_id: uuid.UUID,
+    *,
+    poll_interval: float = 0.5,
+) -> str:
+    """Run coro as a Task; watchdog cancels it when the cancel signal fires.
+
+    Reduces cancel latency from "wait for next loop iteration" to ~poll_interval,
+    allowing mid-LLM-call interruption.
+    """
+    task: asyncio.Task[str] = asyncio.create_task(coro)  # type: ignore[arg-type]
+
+    async def _watchdog() -> None:
+        while True:
+            await asyncio.sleep(poll_interval)
+            if task.done():
+                return
+            if await cancel_signal.is_requested(run_id):
+                task.cancel()
+                return
+
+    watchdog = asyncio.create_task(_watchdog())
+    try:
+        return await task
+    except (asyncio.CancelledError, RunCancelled):
+        raise RunCancelled("run was cancelled")
+    finally:
+        watchdog.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watchdog
+
+
 async def _process_one(
     run_id: uuid.UUID,
     event_bus: RedisEventBus,
@@ -95,8 +131,10 @@ async def _process_one(
     error: str | None = None
     cancelled = False
     try:
-        result = await _build_loop().run(
-            saved_input, on_message=on_message, should_cancel=should_cancel
+        result = await _run_cancellable(
+            _build_loop().run(saved_input, on_message=on_message, should_cancel=should_cancel),
+            cancel_signal,
+            run_id,
         )
     except RunCancelled:
         logger.info("run %s cancelled mid-execution", run_id)

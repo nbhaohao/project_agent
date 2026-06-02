@@ -1,12 +1,13 @@
 """Worker _process_one logic — fakes for DB and queue, no real infra."""
 
+import asyncio
 import uuid
 
 import pytest
 
-from app.domain.run import Run, RunStatus
+from app.domain.run import Run, RunCancelled, RunStatus
 from app.infrastructure.queue import RedisRunQueue
-from app.worker import _process_one
+from app.worker import _process_one, _run_cancellable
 
 
 class FakeRepo:
@@ -126,3 +127,37 @@ async def test_worker_skips_run_cancelled_while_queued(monkeypatch):
     # Should silently skip — no events published, status untouched
     assert events == []
     assert run.status is RunStatus.CANCELLED
+
+
+async def test_run_cancellable_watchdog_interrupts_stuck_task():
+    """Watchdog should cancel a never-returning coroutine within ~poll_interval."""
+
+    async def _stuck() -> str:
+        await asyncio.sleep(999)
+        return "unreachable"
+
+    class _ImmediateCancel:
+        async def is_requested(self, run_id: uuid.UUID) -> bool:
+            return True
+
+    with pytest.raises(RunCancelled):
+        await _run_cancellable(
+            _stuck(),
+            _ImmediateCancel(),
+            uuid.uuid4(),
+            poll_interval=0.05,  # fast poll for tests
+        )
+
+
+async def test_run_cancellable_completes_normally():
+    """If no cancel signal, _run_cancellable returns the coro result."""
+
+    async def _fast() -> str:
+        return "done"
+
+    class _NoCancel:
+        async def is_requested(self, run_id: uuid.UUID) -> bool:
+            return False
+
+    result = await _run_cancellable(_fast(), _NoCancel(), uuid.uuid4(), poll_interval=0.05)
+    assert result == "done"
