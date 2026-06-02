@@ -31,6 +31,12 @@ class MessageRepository(Protocol):
     async def list_for_run(self, run_id: uuid.UUID) -> list[RunMessage]: ...
 
 
+class CancelSignal(Protocol):
+    async def request(self, run_id: uuid.UUID) -> None: ...
+
+    async def is_requested(self, run_id: uuid.UUID) -> bool: ...
+
+
 class LLMClient(Protocol):
     async def complete(
         self,
