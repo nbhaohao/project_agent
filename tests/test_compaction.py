@@ -10,7 +10,8 @@ def _msg(role: str, text: str) -> dict:
 def test_estimate_tokens_proportional_to_content():
     msgs = [_msg("user", "hello")]
     assert estimate_tokens(msgs) > 0
-    assert estimate_tokens([_msg("user", "x" * 400)]) == pytest.approx(100, abs=10)
+    # 400-char string → repr ≈ 400 chars → / 4 ≈ 100 tokens (±20 for dict overhead)
+    assert estimate_tokens([_msg("user", "x" * 400)]) == pytest.approx(100, abs=20)
 
 
 def test_compact_noop_when_short():

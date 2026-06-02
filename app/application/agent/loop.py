@@ -1,14 +1,11 @@
-"""Agent execution loop — LLM ↔ tool dispatch cycle.
-
-Extracted from my-agent's agent_loop(); stripped to the minimal M3 skeleton:
-no compaction, no memory, no sub-agents (those come in M7/M8/M9).
-"""
+"""Agent execution loop — LLM ↔ tool dispatch cycle."""
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from app.application.agent.compaction import compact_messages, estimate_tokens
 from app.domain.run import RunCancelled
 
 if TYPE_CHECKING:
@@ -16,6 +13,7 @@ if TYPE_CHECKING:
     from app.application.ports import LLMClient
 
 MAX_ITERATIONS = 50
+DEFAULT_CONTEXT_LIMIT = 80_000  # tokens; compact before hitting model window
 
 
 async def _noop(*_: object) -> None:
@@ -39,10 +37,14 @@ class AgentLoop:
         llm: LLMClient,
         registry: ToolRegistry,
         max_iterations: int = MAX_ITERATIONS,
+        context_limit: int = DEFAULT_CONTEXT_LIMIT,
+        keep_recent: int = 10,
     ) -> None:
         self._llm = llm
         self._registry = registry
         self._max_iterations = max_iterations
+        self._context_limit = context_limit
+        self._keep_recent = keep_recent
 
     async def run(
         self,
@@ -58,6 +60,8 @@ class AgentLoop:
         for _ in range(self._max_iterations):
             if await should_cancel():
                 raise RunCancelled("run was cancelled")
+            if estimate_tokens(messages) > self._context_limit:
+                messages = compact_messages(messages, keep_recent=self._keep_recent)
             response = await self._llm.complete(
                 messages=messages,
                 tools=self._registry.schemas(),

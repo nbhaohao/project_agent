@@ -144,6 +144,40 @@ async def test_should_cancel_checked_before_llm_call():
         await loop.run("go", should_cancel=cancel_on_second)
 
 
+async def test_compaction_triggered_when_context_limit_exceeded():
+    # context_limit=1 forces compaction every iteration; keep_recent=1 keeps only
+    # the most recent message (plus the first), so we can assert exact shape.
+    captured: list[list[dict]] = []
+
+    class CapturingLLM:
+        _responses = iter([
+            FakeResponse([FakeBlock("tool_use", id="t1", name="get_current_time", input={})], "tool_use"),
+            FakeResponse([FakeBlock("tool_use", id="t2", name="get_current_time", input={})], "tool_use"),
+            FakeResponse([FakeBlock("text", text="Done.")], "end_turn"),
+        ])
+
+        async def complete(self, messages, tools, system=""):
+            captured.append(list(messages))
+            return next(self._responses)
+
+    loop = AgentLoop(
+        llm=CapturingLLM(),
+        registry=_make_registry("get_current_time"),
+        context_limit=1,   # always over the limit
+        keep_recent=1,     # keep first + last 1
+    )
+    result = await loop.run("do a thing")
+    assert result == "Done."
+
+    # Call 1: [user_init] — only initial message, no compaction yet
+    assert captured[0][0]["role"] == "user"
+
+    # Call 3: compaction has run; messages should be [first_user, most_recent_user]
+    # (not the full 5-message history that would exist without compaction)
+    assert len(captured[2]) == 2
+    assert captured[2][0]["role"] == "user"   # original task preserved
+
+
 async def test_unknown_tool_returns_error_string_not_raise():
     loop = _loop([
         FakeResponse(

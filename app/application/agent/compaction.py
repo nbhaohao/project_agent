@@ -6,13 +6,13 @@ Strategy: keep-first-keep-last
   - Retain the most recent `keep_recent` messages for current context
 """
 
-import json
-
 _CHARS_PER_TOKEN = 4  # rough but provider-agnostic estimate
 
 
 def estimate_tokens(messages: list[dict]) -> int:
-    return sum(len(json.dumps(m)) for m in messages) // _CHARS_PER_TOKEN
+    # repr() handles non-JSON-serializable objects (SDK blocks, dataclasses)
+    # that live in message content during loop execution.
+    return sum(len(repr(m)) for m in messages) // _CHARS_PER_TOKEN
 
 
 def compact_messages(messages: list[dict], *, keep_recent: int = 10) -> list[dict]:
