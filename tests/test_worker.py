@@ -67,9 +67,6 @@ async def test_worker_unknown_run_is_skipped(monkeypatch):
     """If run_id no longer exists in DB, _process_one should return silently."""
     unknown_id = uuid.uuid4()
 
-    # Patch SessionLocal to return a session that yields an empty repo
-    from app.infrastructure import db as db_module
-
     class _EmptyRepo:
         async def get(self, run_id):
             return None
@@ -81,13 +78,13 @@ async def test_worker_unknown_run_is_skipped(monkeypatch):
         async def __aexit__(self, *_): pass
         def begin(self): return self
 
-    monkeypatch.setattr(db_module, "SessionLocal", lambda: _FakeCtx())
-
-    from app.infrastructure import repositories as repo_module
-    monkeypatch.setattr(repo_module, "SqlAlchemyRunRepository", lambda s: _EmptyRepo())
+    # Patch worker's local references (from-import creates a local binding,
+    # so we must patch the name in app.worker, not in the source module)
+    import app.worker as worker_module
+    monkeypatch.setattr(worker_module, "SessionLocal", lambda: _FakeCtx())
+    monkeypatch.setattr(worker_module, "SqlAlchemyRunRepository", lambda s: _EmptyRepo())
 
     class _FakeEventBus:
         async def publish(self, run_id, event): pass
 
-    # Should return without raising
     await _process_one(unknown_id, _FakeEventBus())
