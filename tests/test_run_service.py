@@ -2,7 +2,7 @@
 
 import uuid
 
-from app.application.run_service import RunService
+from app.application.run_service import RunService, cancel_run
 from app.domain.run import Run, RunStatus
 
 
@@ -94,3 +94,61 @@ async def test_list_returns_submitted_runs():
     runs = await service.list(limit=50, offset=0)
 
     assert len(runs) == 2
+
+
+# --- cancel_run use case ---
+
+class FakeCancelSignal:
+    def __init__(self) -> None:
+        self.requested: list[uuid.UUID] = []
+
+    async def request(self, run_id: uuid.UUID) -> None:
+        self.requested.append(run_id)
+
+    async def is_requested(self, run_id: uuid.UUID) -> bool:
+        return run_id in self.requested
+
+
+async def test_cancel_queued_run_marks_cancelled():
+    log: list[str] = []
+    repo = FakeRunRepository()
+    session = FakeSession(log)
+    signal = FakeCancelSignal()
+
+    run = Run.submit("do a thing")
+    await repo.add(run)
+
+    result = await cancel_run(run.id, runs=repo, signal=signal, session=session)
+
+    assert result is not None
+    assert result.status is RunStatus.CANCELLED
+    assert run.id in signal.requested
+    assert "commit" in log
+
+
+async def test_cancel_unknown_run_returns_none():
+    repo = FakeRunRepository()
+    session = FakeSession([])
+    signal = FakeCancelSignal()
+
+    result = await cancel_run(uuid.uuid4(), runs=repo, signal=signal, session=session)
+
+    assert result is None
+    assert signal.requested == []
+
+
+async def test_cancel_terminal_run_is_idempotent():
+    repo = FakeRunRepository()
+    session = FakeSession([])
+    signal = FakeCancelSignal()
+
+    run = Run.submit("do a thing")
+    run.mark_running()
+    run.mark_succeeded("done")
+    await repo.add(run)
+
+    result = await cancel_run(run.id, runs=repo, signal=signal, session=session)
+
+    assert result is not None
+    assert result.status is RunStatus.SUCCEEDED  # unchanged
+    assert signal.requested == []  # no signal set

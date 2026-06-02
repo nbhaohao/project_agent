@@ -4,8 +4,32 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.ports import RunQueue, RunRepository
-from app.domain.run import Run
+from app.application.ports import CancelSignal, RunQueue, RunRepository
+from app.domain.run import Run, RunStatus
+
+_TERMINAL = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}
+
+
+async def cancel_run(
+    run_id: uuid.UUID,
+    *,
+    runs: RunRepository,
+    signal: CancelSignal,
+    session: AsyncSession,
+) -> Run | None:
+    run = await runs.get(run_id)
+    if run is None:
+        return None
+    if run.status in _TERMINAL:
+        return run  # idempotent
+    if run.status is RunStatus.QUEUED:
+        # Not yet picked up by worker — mark directly; worker will skip on dequeue
+        run.mark_cancelled()
+        await runs.update(run)
+        await session.commit()
+    # For RUNNING: signal only — worker detects and marks_cancelled itself
+    await signal.request(run_id)
+    return run
 
 
 class RunService:

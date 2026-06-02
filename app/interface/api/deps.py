@@ -6,6 +6,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.run_service import RunService
+from app.infrastructure.cancel import RedisCancelSignal
 from app.infrastructure.db import SessionLocal
 from app.infrastructure.queue import RedisRunQueue
 from app.infrastructure.redis import redis_client
@@ -24,3 +25,7 @@ def get_run_service(
     session: AsyncSession = Depends(get_session),
 ) -> RunService:
     return RunService(session, SqlAlchemyRunRepository(session), RedisRunQueue(redis_client))
+
+
+def get_cancel_signal() -> RedisCancelSignal:
+    return RedisCancelSignal(redis_client)

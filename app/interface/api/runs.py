@@ -8,17 +8,19 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.agent.events import derive_events
-from app.application.run_service import RunService
+from app.application.run_service import RunService, cancel_run
 from app.domain.message import RunMessage
 from app.domain.run import Run, RunStatus
+from app.infrastructure.cancel import RedisCancelSignal
 from app.infrastructure.db import SessionLocal
 from app.infrastructure.redis import pubsub_redis, redis_client
 from app.infrastructure.repositories import SqlAlchemyMessageRepository, SqlAlchemyRunRepository
-from app.interface.api.deps import get_run_service
+from app.interface.api.deps import get_cancel_signal, get_run_service, get_session
 
-_TERMINAL = {RunStatus.SUCCEEDED, RunStatus.FAILED}
+_TERMINAL = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -58,6 +60,19 @@ async def get_run(
     return RunResponse.model_validate(run)
 
 
+@router.post("/{run_id}/cancel", response_model=RunResponse, status_code=202)
+async def cancel_run_endpoint(
+    run_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    signal: RedisCancelSignal = Depends(get_cancel_signal),
+) -> RunResponse:
+    repo = SqlAlchemyRunRepository(session)
+    run = await cancel_run(run_id, runs=repo, signal=signal, session=session)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return RunResponse.model_validate(run)
+
+
 @router.get("/{run_id}/events")
 async def run_events(run_id: uuid.UUID) -> StreamingResponse:
     async with SessionLocal() as session, session.begin():
@@ -87,8 +102,10 @@ async def _event_stream(run: Run, history: list[RunMessage]) -> AsyncIterator[st
     if run.status in _TERMINAL:
         if run.status == RunStatus.SUCCEEDED:
             yield _sse({"type": "done", "result": run.result or ""})
-        else:
+        elif run.status == RunStatus.FAILED:
             yield _sse({"type": "error", "error": run.error or ""})
+        else:  # CANCELLED
+            yield _sse({"type": "cancelled"})
         return
 
     # subscribe to real-time events from worker
@@ -103,7 +120,7 @@ async def _event_stream(run: Run, history: list[RunMessage]) -> AsyncIterator[st
                 data = data.decode()
             event = json.loads(data)
             yield _sse(event)
-            if event.get("type") in ("done", "error"):
+            if event.get("type") in ("done", "error", "cancelled"):
                 break
     finally:
         await pubsub.unsubscribe(f"run:{run.id}:events")
