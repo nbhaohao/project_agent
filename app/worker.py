@@ -13,6 +13,8 @@ from app.application.agent.events import derive_events
 from app.application.agent.loop import AgentLoop
 from app.application.agent.tools.builtin import build_registry
 from app.domain.message import RunMessage
+from app.domain.run import RunCancelled, RunStatus
+from app.infrastructure.cancel import RedisCancelSignal
 from app.infrastructure.db import SessionLocal
 from app.infrastructure.event_bus import RedisEventBus
 from app.infrastructure.llm import AnthropicLLMClient
@@ -65,12 +67,20 @@ def _build_loop() -> AgentLoop:
     )
 
 
-async def _process_one(run_id: uuid.UUID, event_bus: RedisEventBus) -> None:
+async def _process_one(
+    run_id: uuid.UUID,
+    event_bus: RedisEventBus,
+    cancel_signal: RedisCancelSignal,
+) -> None:
     async with SessionLocal() as session, session.begin():
         repo = SqlAlchemyRunRepository(session)
         run = await repo.get(run_id)
         if run is None:
             logger.warning("run %s not found, skipping", run_id)
+            return
+        if run.status is not RunStatus.QUEUED:
+            # Cancelled while waiting in queue — DB already updated by API, just skip
+            logger.info("run %s status=%s on dequeue, skipping", run_id, run.status)
             return
         run.mark_running()
         await repo.update(run)
@@ -78,10 +88,19 @@ async def _process_one(run_id: uuid.UUID, event_bus: RedisEventBus) -> None:
 
     on_message = _make_on_message(run_id, event_bus)
 
+    async def should_cancel() -> bool:
+        return await cancel_signal.is_requested(run_id)
+
     result: str | None = None
     error: str | None = None
+    cancelled = False
     try:
-        result = await _build_loop().run(saved_input, on_message=on_message)
+        result = await _build_loop().run(
+            saved_input, on_message=on_message, should_cancel=should_cancel
+        )
+    except RunCancelled:
+        logger.info("run %s cancelled mid-execution", run_id)
+        cancelled = True
     except Exception as exc:
         logger.exception("agent failed for run %s", run_id)
         error = str(exc)
@@ -91,31 +110,36 @@ async def _process_one(run_id: uuid.UUID, event_bus: RedisEventBus) -> None:
         run = await repo.get(run_id)
         if run is None:
             return
-        if error is None:
+        if cancelled:
+            run.mark_cancelled()
+        elif error is None:
             run.mark_succeeded(result)
         else:
             run.mark_failed(error)
         await repo.update(run)
 
-    # publish terminal event so SSE handler knows the stream is finished
-    if error is None:
+    if cancelled:
+        await event_bus.publish(run_id, {"type": "cancelled"})
+    elif error is None:
         await event_bus.publish(run_id, {"type": "done", "result": result or ""})
     else:
         await event_bus.publish(run_id, {"type": "error", "error": error})
 
-    logger.info("run %s → %s", run_id, "succeeded" if error is None else "failed")
+    terminal = "cancelled" if cancelled else ("succeeded" if error is None else "failed")
+    logger.info("run %s → %s", run_id, terminal)
 
 
 async def run_worker() -> None:
     queue = RedisRunQueue(redis_client)
     event_bus = RedisEventBus(redis_client)
+    cancel_signal = RedisCancelSignal(redis_client)
     logger.info("worker started, waiting for runs…")
     while True:
         try:
             run_id = await queue.dequeue(timeout=5)
             if run_id is None:
                 continue
-            await _process_one(run_id, event_bus)
+            await _process_one(run_id, event_bus, cancel_signal)
         except Exception:
             logger.exception("unexpected error in worker loop, continuing")
 

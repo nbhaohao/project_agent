@@ -87,4 +87,42 @@ async def test_worker_unknown_run_is_skipped(monkeypatch):
     class _FakeEventBus:
         async def publish(self, run_id, event): pass
 
-    await _process_one(unknown_id, _FakeEventBus())
+    class _FakeCancelSignal:
+        async def is_requested(self, run_id): return False
+
+    await _process_one(unknown_id, _FakeEventBus(), _FakeCancelSignal())
+
+
+async def test_worker_skips_run_cancelled_while_queued(monkeypatch):
+    """If a run is cancelled before the worker picks it up, _process_one skips it."""
+    from app.domain.run import Run, RunStatus
+    import app.worker as worker_module
+
+    run = Run.submit("test")
+    run.mark_cancelled()  # API cancelled it while it was queued
+
+    class _CancelledRepo:
+        async def get(self, run_id): return run
+        async def update(self, r): pass
+
+    class _FakeCtx:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+        def begin(self): return self
+
+    monkeypatch.setattr(worker_module, "SessionLocal", lambda: _FakeCtx())
+    monkeypatch.setattr(worker_module, "SqlAlchemyRunRepository", lambda s: _CancelledRepo())
+
+    events = []
+
+    class _FakeEventBus:
+        async def publish(self, run_id, event): events.append(event)
+
+    class _FakeCancelSignal:
+        async def is_requested(self, run_id): return False
+
+    await _process_one(run.id, _FakeEventBus(), _FakeCancelSignal())
+
+    # Should silently skip — no events published, status untouched
+    assert events == []
+    assert run.status is RunStatus.CANCELLED
