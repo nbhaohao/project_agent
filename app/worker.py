@@ -13,6 +13,7 @@ from collections.abc import Awaitable
 
 from app.application.agent.events import derive_events
 from app.application.agent.loop import AgentLoop
+from app.application.agent.specialists import build_subagent_tools
 from app.application.agent.tools.builtin import build_registry
 from app.application.agent.tools.memory import build_memory_tools
 from app.domain.message import RunMessage
@@ -69,10 +70,17 @@ def _make_on_message(run_id: uuid.UUID, event_bus: RedisEventBus):
 
 
 def _build_loop() -> AgentLoop:
+    llm = AnthropicLLMClient()
+    embedder = SiliconFlowEmbedder()
+    memory_repo = SqlAlchemyMemoryRepository()
+
     registry = build_registry(allowed={"network", "fs_read"})
-    for tool in build_memory_tools(SiliconFlowEmbedder(), SqlAlchemyMemoryRepository()):
+    for tool in build_memory_tools(embedder, memory_repo):
         registry.register(tool)
-    return AgentLoop(llm=AnthropicLLMClient(), registry=registry)
+    for tool in build_subagent_tools(llm=llm, embedder=embedder, memory_repo=memory_repo):
+        registry.register(tool)
+
+    return AgentLoop(llm=llm, registry=registry)
 
 
 async def _run_cancellable(
