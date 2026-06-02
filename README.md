@@ -58,8 +58,8 @@ curl localhost:8000/runs             # 列表
 - **M4 工具系统** ✅ Tool dataclass + ToolRegistry(capability 过滤+超时) + http_fetch/file_read
 - **M5 SSE 流式 + 前端** ✅ run_messages 表 + Redis Pub/Sub + SSE 端点 + vanilla 前端
 - **M6 中断/取消** ✅ CancelSignal port + 协作式取消 + watchdog Task + POST /runs/{id}/cancel
-- **M7 上下文工程** 🔄 context 管理、compaction、消息历史截断
-- M8 记忆 + RAG(pgvector + embedding，跨 run 长期记忆)
+- **M7 上下文工程** ✅ compaction（保头保尾）+ estimate_tokens + context_limit 参数
+- **M8 记忆 + RAG** ✅ pgvector + SiliconFlow bge-m3 + remember/recall 工具 + 跨 run 语义检索
 - M9 多 agent 编排(sub-agent / planner-executor / agent-as-tool)
 - M10 eval + 可观测(eval harness、trace_id、成本追踪)
 - M11 部署收口 + UI 打磨
