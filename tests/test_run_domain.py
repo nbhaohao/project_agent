@@ -47,3 +47,24 @@ def test_invalid_transition_raises():
     run = Run.submit("do a thing")
     with pytest.raises(InvalidTransition):
         run.mark_succeeded()  # can't skip RUNNING
+
+
+def test_cancel_from_queued():
+    run = Run.submit("do a thing")
+    run.mark_cancelled()
+    assert run.status is RunStatus.CANCELLED
+
+
+def test_cancel_from_running():
+    run = Run.submit("do a thing")
+    run.mark_running()
+    run.mark_cancelled()
+    assert run.status is RunStatus.CANCELLED
+
+
+def test_cancel_from_terminal_raises():
+    run = Run.submit("do a thing")
+    run.mark_running()
+    run.mark_succeeded()
+    with pytest.raises(InvalidTransition):
+        run.mark_cancelled()

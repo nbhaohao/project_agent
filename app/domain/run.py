@@ -28,6 +28,10 @@ class InvalidTransition(Exception):
     pass
 
 
+class RunCancelled(Exception):
+    """Raised by AgentLoop when a cancel signal is detected mid-execution."""
+
+
 @dataclass
 class Run:
     id: uuid.UUID
@@ -62,3 +66,8 @@ class Run:
             raise InvalidTransition(f"cannot mark failed from {self.status}")
         self.status = RunStatus.FAILED
         self.error = error
+
+    def mark_cancelled(self) -> None:
+        if self.status not in (RunStatus.QUEUED, RunStatus.RUNNING):
+            raise InvalidTransition(f"cannot mark cancelled from {self.status}")
+        self.status = RunStatus.CANCELLED
