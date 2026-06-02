@@ -96,7 +96,19 @@
     .evt-tool_result{ background: #161f16; border-color: #22c55e; color: #86efac; }
     .evt-done       { background: #162032; border-color: #22c55e; color: #4ade80; font-weight: 600; }
     .evt-error      { background: #1f1520; border-color: #ef4444; color: #fca5a5; }
+    .evt-cancelled  { background: #1e1a2e; border-color: #a855f7; color: #d8b4fe; font-weight: 600; }
     .evt-status     { color: #475569; font-size: .78rem; font-style: italic; }
+
+    #cancel-btn {
+      align-self: flex-end;
+      padding: .55rem 1.4rem;
+      background: #7f1d1d;
+      border-color: #ef4444;
+      color: #fca5a5;
+      font-size: .9rem;
+      display: none;
+    }
+    #cancel-btn:hover { background: #991b1b; border-color: #f87171; color: #fecaca; }
   </style>
 </head>
 <body>
@@ -111,15 +123,22 @@
       <button onclick="preset('Read the file hello.txt using the file_read tool and tell me exactly what it says.')">📄 Read file</button>
     </div>
 
-    <button id="submit-btn" onclick="submitRun()">▶ Run</button>
+    <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+      <button id="cancel-btn" onclick="cancelRun()">✕ Cancel</button>
+      <button id="submit-btn" onclick="submitRun()">▶ Run</button>
+    </div>
   </div>
 
   <div id="stream"></div>
 
   <script>
-    const inputEl  = document.getElementById('input');
-    const streamEl = document.getElementById('stream');
+    const inputEl   = document.getElementById('input');
+    const streamEl  = document.getElementById('stream');
     const submitBtn = document.getElementById('submit-btn');
+    const cancelBtn = document.getElementById('cancel-btn');
+
+    let activeRunId = null;
+    let activeEs    = null;
 
     function preset(text) { inputEl.value = text; }
 
@@ -134,6 +153,33 @@
     function esc(s) {
       return String(s)
         .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function setRunning(runId, es) {
+      activeRunId = runId;
+      activeEs    = es;
+      submitBtn.disabled  = true;
+      cancelBtn.style.display = 'block';
+    }
+
+    function setIdle() {
+      activeRunId = null;
+      activeEs    = null;
+      submitBtn.disabled      = false;
+      cancelBtn.style.display = 'none';
+      cancelBtn.disabled      = false;
+    }
+
+    async function cancelRun() {
+      if (!activeRunId) return;
+      cancelBtn.disabled = true;
+      addEvent('status', '⏳ Cancelling…');
+      try {
+        await fetch(`/runs/${activeRunId}/cancel`, { method: 'POST' });
+      } catch (e) {
+        addEvent('error', `❌ Cancel failed: ${esc(e.message)}`);
+        cancelBtn.disabled = false;
+      }
     }
 
     async function submitRun() {
@@ -164,6 +210,7 @@
       addEvent('status', `run ${runId}`);
 
       const es = new EventSource(`/runs/${runId}/events`);
+      setRunning(runId, es);
 
       es.onmessage = (e) => {
         const evt = JSON.parse(e.data);
@@ -176,19 +223,20 @@
           addEvent('tool_result', `↩ ${esc(evt.output)}`);
         } else if (evt.type === 'done') {
           addEvent('done', `✅ Done`);
-          es.close();
-          submitBtn.disabled = false;
+          es.close(); setIdle();
         } else if (evt.type === 'error') {
           addEvent('error', `❌ ${esc(evt.error)}`);
-          es.close();
-          submitBtn.disabled = false;
+          es.close(); setIdle();
+        } else if (evt.type === 'cancelled') {
+          addEvent('cancelled', `🚫 Cancelled`);
+          es.close(); setIdle();
         }
       };
 
       es.onerror = () => {
         es.close();
         addEvent('error', '❌ Stream disconnected');
-        submitBtn.disabled = false;
+        setIdle();
       };
     }
   </script>
