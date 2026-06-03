@@ -33,6 +33,7 @@ open http://localhost:8000         # 前端 demo
 ```
 
 停:`docker compose down`(加 `-v` 清数据卷)。
+源码变更后重建镜像:`docker compose build && docker compose up -d`。
 
 ## 本地开发模式(uv)
 
