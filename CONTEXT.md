@@ -1,7 +1,7 @@
 # Project Context
 
 > 把这个文件给任何 AI 助手读，它就能快速理解这个项目的背景、目标和当前状态。
-> 最后更新：2026-06-03（M9 完成）
+> 最后更新：2026-06-03（M10 完成）
 
 ---
 
@@ -52,8 +52,7 @@ app/
 | M7 上下文工程 | ✅ 完成 | context 管理、compaction（保头保尾）、消息历史截断 |
 | M8 记忆 + RAG | ✅ 完成 | pgvector + SiliconFlow bge-m3 + remember/recall 工具 + 跨 run 语义检索 |
 | **M9 多 agent 编排** | ✅ 完成 | agent-as-tool 模式 + SubAgentDefinition + researcher/summarizer 专家 + 递归深度=1 |
-| M9 多 agent 编排 | 待做 | sub-agent / planner-executor / agent-as-tool |
-| M10 eval + 可观测 | 待做 | eval harness、trace_id、成本追踪 |
+| **M10 eval + 可观测** | ✅ 完成 | MeteredLLMClient + Usage/RunMetrics + trace_id contextvar + JSON 日志 + metrics 落库 + SSE usage 事件 + eval harness(6 cases) + 报告 CLI |
 | M11 部署收口 | 待做 | Docker 化部署 + UI 打磨 |
 
 ## 关键架构决策（已拍板，不要再提议更改）
@@ -66,7 +65,7 @@ app/
 6. **消息(messages) ≠ 记忆(memory)**：messages 是单次 run 内的工作上下文（M5 建表）；memory 是跨 run 的长期知识（M8 pgvector）
 7. **工具沙箱轻量层**：capability 声明（`network`/`fs_read`）+ `asyncio.wait_for` 超时 + 路径穿越防护；进程/容器隔离留到真正需要执行任意代码时（YAGNI）
 
-## 项目文件结构（当前 M5）
+## 项目文件结构（当前 M10）
 
 ```
 project_agent/
@@ -90,8 +89,14 @@ project_agent/
 │   │           ├── memory.py        # build_memory_tools(embedder, repo) → remember/recall Tool
 │   │           ├── base.py          # Tool dataclass + ToolRegistry(capability 过滤+asyncio 超时)
 │   │           └── builtin.py       # get_current_time / http_fetch / file_read + build_registry()
+│   ├── domain/
+│   │   ├── ids.py                   # UUIDv7 生成
+│   │   ├── run.py                   # Run dataclass + RunStatus + 状态机 + record_metrics()
+│   │   ├── message.py               # RunMessage dataclass
+│   │   ├── memory.py                # Memory dataclass
+│   │   └── usage.py                 # Usage + RunMetrics + compute_cost()（定价表，纯函数）
 │   ├── infrastructure/
-│   │   ├── db.py                    # async SQLAlchemy engine + SessionLocal + pgvector codec 注册
+│   │   ├── db.py                    # async SQLAlchemy engine + SessionLocal
 │   │   ├── models.py                # RunORM + RunMessageORM + MemoryORM（Vector 1024）
 │   │   ├── repositories.py          # SqlAlchemyRunRepository + MessageRepository + MemoryRepository
 │   │   ├── embedder.py              # SiliconFlowEmbedder（httpx, OpenAI-兼容 /embeddings）
@@ -99,7 +104,9 @@ project_agent/
 │   │   ├── event_bus.py             # RedisEventBus（PUBLISH 到 run:{id}:events channel）
 │   │   ├── cancel.py                # RedisCancelSignal（SET run:{id}:cancel / EXISTS）
 │   │   ├── redis.py                 # 共享 redis.asyncio 客户端（含 pubsub_redis socket_timeout=None）
-│   │   └── llm.py                   # AnthropicLLMClient（AsyncAnthropic，支持 DeepSeek URL）
+│   │   └── llm.py                   # AnthropicLLMClient + MeteredLLMClient（usage 累加装饰器）
+│   ├── observability/
+│   │   └── tracing.py               # trace_id ContextVar + bind_trace() + TraceFilter + JsonFormatter
 │   ├── interface/api/
 │   │   ├── health.py                # GET /health（liveness）GET /health/ready（readiness）
 │   │   ├── runs.py                  # POST /runs, GET /runs/{id}, GET /runs, GET /runs/{id}/events, POST /runs/{id}/cancel
@@ -108,6 +115,10 @@ project_agent/
 │       └── index.html               # vanilla 前端（亮色）：提交框 + 3 preset + Cancel 按钮 + EventSource 渲染
 ├── migrations/                      # Alembic 迁移（async env）
 ├── tests/                           # 75 个单测（domain/service/loop/worker/compaction/memory/subagent，无 DB/LLM 依赖）
+├── eval/
+│   ├── dataset.json                 # 6 个 eval case（time/fetch/file/remember/recall/subagent）
+│   ├── harness.py                   # async 跑 case + 断言(contains/tool_called) + 收集 metrics
+│   └── __main__.py                  # CLI 入口：python -m eval，打印 ASCII 表 + SUMMARY，exit 0/1
 ├── scripts/
 │   ├── e2e_m1.sh                    # M1 集成测试（curl 断言）
 │   ├── e2e_m2.sh                    # M2 集成测试（worker stub 全链路）
@@ -117,7 +128,8 @@ project_agent/
 │   ├── e2e_m6.sh                    # M6 集成测试（QUEUED 取消 + cancelled SSE 事件 + 404）
 │   ├── e2e_m7.sh                    # （无独立 e2e，compaction 通过单测 + M8 e2e 隐式验证）
 │   ├── e2e_m8.sh                    # M8 集成测试（remember→recall 跨 run RAG 链路验证）
-│   └── e2e_m9.sh                    # M9 集成测试（主 agent 委托 researcher sub-agent 全链路）
+│   ├── e2e_m9.sh                    # M9 集成测试（主 agent 委托 researcher sub-agent 全链路）
+│   └── e2e_m10.sh                   # M10 集成测试（metrics 落库 + SSE 携带 + eval CLI 启动）
 ├── docker-compose.yml               # postgres:16 + redis:7
 ├── pyproject.toml                   # 依赖（fastapi/uvicorn/sqlalchemy/alembic/redis/anthropic）
 └── .env.example                     # 环境变量模板（DATABASE_URL/REDIS_URL/LLM 三键）
