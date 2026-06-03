@@ -12,6 +12,7 @@ import uuid
 from collections.abc import Awaitable
 
 from app.application.agent.events import derive_events
+from app.observability.tracing import bind_trace, configure_logging
 from app.application.agent.loop import AgentLoop
 from app.application.agent.specialists import build_subagent_tools
 from app.application.agent.tools.builtin import build_registry
@@ -122,6 +123,7 @@ async def _process_one(
     event_bus: RedisEventBus,
     cancel_signal: RedisCancelSignal,
 ) -> None:
+    bind_trace(run_id)
     async with SessionLocal() as session, session.begin():
         repo = SqlAlchemyRunRepository(session)
         run = await repo.get(run_id)
@@ -198,7 +200,7 @@ async def run_worker() -> None:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    configure_logging()
 
     loop = asyncio.new_event_loop()
 
