@@ -79,6 +79,8 @@
       flex-direction: column;
       gap: .5rem;
       margin-top: .5rem;
+      max-height: 65vh;
+      overflow-y: auto;
     }
 
     .evt {
@@ -98,6 +100,10 @@
     .evt-cancelled  { background: #faf5ff; border-color: #a855f7; color: #7e22ce; font-weight: 600; }
     .evt-status     { color: #94a3b8; font-size: .78rem; font-style: italic; }
     .evt-usage      { background: #f8fafc; border-color: #94a3b8; color: #475569; font-size: .8rem; }
+    .evt-trace      { background: #f8fafc; border-color: #cbd5e1; color: #94a3b8; font-size: .78rem; }
+    .trace-val      { cursor: pointer; text-decoration: underline dotted; font-family: inherit; }
+    .trace-val:hover { color: #6366f1; }
+    textarea:disabled { opacity: .5; cursor: not-allowed; }
 
     #cancel-btn {
       padding: .55rem 1.4rem;
@@ -146,7 +152,7 @@
       div.className = `evt evt-${type}`;
       div.innerHTML = html;
       streamEl.appendChild(div);
-      div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      streamEl.scrollTop = streamEl.scrollHeight;
     }
 
     function esc(s) {
@@ -154,17 +160,39 @@
         .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
+    function addTraceId(runId) {
+      const div = document.createElement('div');
+      div.className = 'evt evt-trace';
+      div.innerHTML =
+        `trace_id: <span class="trace-val" title="click to copy" onclick="copyTrace(this,'${runId}')">${runId}</span>`;
+      streamEl.appendChild(div);
+      streamEl.scrollTop = streamEl.scrollHeight;
+    }
+
+    function copyTrace(el, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = el.textContent;
+        el.textContent = '✓ copied';
+        el.style.color = '#16a34a';
+        setTimeout(() => { el.textContent = orig; el.style.color = ''; }, 1500);
+      });
+    }
+
     function setRunning(runId, es) {
       activeRunId = runId;
       activeEs    = es;
-      submitBtn.disabled  = true;
+      inputEl.disabled        = true;
+      submitBtn.disabled      = true;
+      submitBtn.textContent   = '⏳ Running…';
       cancelBtn.style.display = 'block';
     }
 
     function setIdle() {
       activeRunId = null;
       activeEs    = null;
+      inputEl.disabled        = false;
       submitBtn.disabled      = false;
+      submitBtn.textContent   = '▶ Run';
       cancelBtn.style.display = 'none';
       cancelBtn.disabled      = false;
     }
@@ -206,7 +234,7 @@
       }
 
       streamEl.innerHTML = '';
-      addEvent('status', `run ${runId}`);
+      addTraceId(runId);
 
       const es = new EventSource(`/runs/${runId}/events`);
       setRunning(runId, es);
