@@ -1,0 +1,25 @@
+# Python artifacts
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+**/*.pyc
+*.pyo
+
+# Test / dev tooling
+.pytest_cache/
+.ruff_cache/
+tests/
+
+# Local secrets and IDE
+.env
+.DS_Store
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Docs and shell scripts (not needed in runtime image)
+*.md
+scripts/
