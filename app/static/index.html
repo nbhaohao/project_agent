@@ -97,6 +97,7 @@
     .evt-error      { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
     .evt-cancelled  { background: #faf5ff; border-color: #a855f7; color: #7e22ce; font-weight: 600; }
     .evt-status     { color: #94a3b8; font-size: .78rem; font-style: italic; }
+    .evt-usage      { background: #f8fafc; border-color: #94a3b8; color: #475569; font-size: .8rem; }
 
     #cancel-btn {
       padding: .55rem 1.4rem;
@@ -221,6 +222,12 @@
           addEvent('tool_result', `↩ ${esc(evt.output)}`);
         } else if (evt.type === 'done') {
           addEvent('done', `✅ Done`);
+          if (evt.input_tokens != null) {
+            const cost = evt.cost_usd != null ? `$${Number(evt.cost_usd).toFixed(6)}` : '—';
+            addEvent('usage',
+              `📊 ${evt.input_tokens}↑ ${evt.output_tokens}↓ tokens · ${evt.llm_calls} LLM calls · ${cost}`
+            );
+          }
           es.close(); setIdle();
         } else if (evt.type === 'error') {
           addEvent('error', `❌ ${esc(evt.error)}`);

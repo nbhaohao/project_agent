@@ -111,7 +111,14 @@ async def _event_stream(run: Run, history: list[RunMessage]) -> AsyncIterator[st
     # already finished — send terminal event and close immediately
     if run.status in _TERMINAL:
         if run.status == RunStatus.SUCCEEDED:
-            yield _sse({"type": "done", "result": run.result or ""})
+            yield _sse({
+                "type": "done",
+                "result": run.result or "",
+                "input_tokens": run.input_tokens,
+                "output_tokens": run.output_tokens,
+                "cost_usd": run.cost_usd,
+                "llm_calls": run.llm_calls,
+            })
         elif run.status == RunStatus.FAILED:
             yield _sse({"type": "error", "error": run.error or ""})
         else:  # CANCELLED

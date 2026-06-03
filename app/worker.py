@@ -178,7 +178,14 @@ async def _process_one(
     if cancelled:
         await event_bus.publish(run_id, {"type": "cancelled"})
     elif error is None:
-        await event_bus.publish(run_id, {"type": "done", "result": result or ""})
+        await event_bus.publish(run_id, {
+            "type": "done",
+            "result": result or "",
+            "input_tokens": run.input_tokens,
+            "output_tokens": run.output_tokens,
+            "cost_usd": run.cost_usd,
+            "llm_calls": run.llm_calls,
+        })
     else:
         await event_bus.publish(run_id, {"type": "error", "error": error})
 
