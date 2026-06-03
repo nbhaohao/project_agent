@@ -52,6 +52,10 @@ def _to_domain(orm: RunORM) -> Run:
         created_at=orm.created_at,
         result=orm.result,
         error=orm.error,
+        input_tokens=orm.input_tokens,
+        output_tokens=orm.output_tokens,
+        cost_usd=orm.cost_usd,
+        llm_calls=orm.llm_calls,
     )
 
 
@@ -115,3 +119,7 @@ class SqlAlchemyRunRepository:
         orm.status = run.status
         orm.result = run.result
         orm.error = run.error
+        orm.input_tokens = run.input_tokens
+        orm.output_tokens = run.output_tokens
+        orm.cost_usd = run.cost_usd
+        orm.llm_calls = run.llm_calls

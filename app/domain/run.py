@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.domain.ids import new_uuid7
+from app.domain.usage import RunMetrics, compute_cost
 
 
 class RunStatus(str, enum.Enum):
@@ -40,6 +41,10 @@ class Run:
     created_at: datetime
     result: str | None = None
     error: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+    llm_calls: int | None = None
 
     @classmethod
     def submit(cls, input: str) -> Run:
@@ -71,3 +76,9 @@ class Run:
         if self.status not in (RunStatus.QUEUED, RunStatus.RUNNING):
             raise InvalidTransition(f"cannot mark cancelled from {self.status}")
         self.status = RunStatus.CANCELLED
+
+    def record_metrics(self, metrics: RunMetrics, model_id: str) -> None:
+        self.input_tokens = metrics.usage.input_tokens
+        self.output_tokens = metrics.usage.output_tokens
+        self.cost_usd = compute_cost(model_id, metrics.usage.input_tokens, metrics.usage.output_tokens)
+        self.llm_calls = metrics.llm_calls

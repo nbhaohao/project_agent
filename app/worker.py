@@ -23,6 +23,7 @@ from app.infrastructure.cancel import RedisCancelSignal
 from app.infrastructure.db import SessionLocal
 from app.infrastructure.embedder import SiliconFlowEmbedder
 from app.infrastructure.event_bus import RedisEventBus
+from app.config import settings
 from app.infrastructure.llm import AnthropicLLMClient, MeteredLLMClient
 from app.infrastructure.queue import RedisRunQueue
 from app.infrastructure.redis import redis_client
@@ -171,6 +172,7 @@ async def _process_one(
             run.mark_succeeded(result)
         else:
             run.mark_failed(error)
+        run.record_metrics(metered.metrics, settings.model_id)
         await repo.update(run)
 
     if cancelled:

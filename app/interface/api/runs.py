@@ -38,6 +38,10 @@ class RunResponse(BaseModel):
     created_at: datetime
     result: str | None = None
     error: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+    llm_calls: int | None = None
 
 
 @router.post("", response_model=RunResponse, status_code=201)
