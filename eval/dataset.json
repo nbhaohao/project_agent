@@ -1,0 +1,38 @@
+[
+  {
+    "id": "time-001",
+    "description": "Agent uses get_current_time tool for a time query",
+    "input": "What is the current UTC time? Use the get_current_time tool.",
+    "assert": {"tool_called": "get_current_time"}
+  },
+  {
+    "id": "fetch-001",
+    "description": "Agent fetches a URL and extracts content from the response",
+    "input": "Fetch https://httpbin.org/json using the http_fetch tool and tell me what top-level JSON fields it contains.",
+    "assert": {"contains": "slideshow"}
+  },
+  {
+    "id": "file-001",
+    "description": "Agent uses file_read tool for a file query",
+    "input": "Read the file /etc/hostname using the file_read tool and tell me what it contains.",
+    "assert": {"tool_called": "file_read"}
+  },
+  {
+    "id": "memory-001",
+    "description": "Agent stores a fact using the remember tool",
+    "input": "Please remember the following fact using the remember tool: 'The eval suite version is 1.0'.",
+    "assert": {"tool_called": "remember"}
+  },
+  {
+    "id": "recall-001",
+    "description": "Agent retrieves stored memories using the recall tool",
+    "input": "Use the recall tool to check if you have any memory about the eval suite version.",
+    "assert": {"tool_called": "recall"}
+  },
+  {
+    "id": "subagent-001",
+    "description": "Main agent delegates a network task to the researcher sub-agent",
+    "input": "Use the delegate_to_researcher agent to fetch https://httpbin.org/uuid and report back the UUID value it returns.",
+    "assert": {"tool_called": "delegate_to_researcher"}
+  }
+]
