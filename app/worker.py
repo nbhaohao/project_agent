@@ -22,7 +22,7 @@ from app.infrastructure.cancel import RedisCancelSignal
 from app.infrastructure.db import SessionLocal
 from app.infrastructure.embedder import SiliconFlowEmbedder
 from app.infrastructure.event_bus import RedisEventBus
-from app.infrastructure.llm import AnthropicLLMClient
+from app.infrastructure.llm import AnthropicLLMClient, MeteredLLMClient
 from app.infrastructure.queue import RedisRunQueue
 from app.infrastructure.redis import redis_client
 from app.infrastructure.repositories import (
@@ -69,18 +69,18 @@ def _make_on_message(run_id: uuid.UUID, event_bus: RedisEventBus):
     return on_message
 
 
-def _build_loop() -> AgentLoop:
-    llm = AnthropicLLMClient()
+def _build_loop() -> tuple[AgentLoop, MeteredLLMClient]:
+    metered = MeteredLLMClient(AnthropicLLMClient())
     embedder = SiliconFlowEmbedder()
     memory_repo = SqlAlchemyMemoryRepository()
 
     registry = build_registry(allowed={"network", "fs_read"})
     for tool in build_memory_tools(embedder, memory_repo):
         registry.register(tool)
-    for tool in build_subagent_tools(llm=llm, embedder=embedder, memory_repo=memory_repo):
+    for tool in build_subagent_tools(llm=metered, embedder=embedder, memory_repo=memory_repo):
         registry.register(tool)
 
-    return AgentLoop(llm=llm, registry=registry)
+    return AgentLoop(llm=metered, registry=registry), metered
 
 
 async def _run_cancellable(
@@ -141,12 +141,13 @@ async def _process_one(
     async def should_cancel() -> bool:
         return await cancel_signal.is_requested(run_id)
 
+    loop, metered = _build_loop()
     result: str | None = None
     error: str | None = None
     cancelled = False
     try:
         result = await _run_cancellable(
-            _build_loop().run(saved_input, on_message=on_message, should_cancel=should_cancel),
+            loop.run(saved_input, on_message=on_message, should_cancel=should_cancel),
             cancel_signal,
             run_id,
         )

@@ -3,6 +3,7 @@
 from anthropic import AsyncAnthropic
 
 from app.config import settings
+from app.domain.usage import RunMetrics, Usage
 
 
 class AnthropicLLMClient:
@@ -20,3 +21,22 @@ class AnthropicLLMClient:
             messages=messages,
             tools=tools,
         )
+
+
+class MeteredLLMClient:
+    """Decorator that accumulates token usage from each LLM call into RunMetrics."""
+
+    def __init__(self, inner: AnthropicLLMClient) -> None:
+        self._inner = inner
+        self.metrics = RunMetrics()
+
+    async def complete(self, messages: list[dict], tools: list[dict], system: str = ""):
+        response = await self._inner.complete(messages=messages, tools=tools, system=system)
+        if hasattr(response, "usage") and response.usage is not None:
+            self.metrics.record_call(
+                Usage(
+                    input_tokens=response.usage.input_tokens,
+                    output_tokens=response.usage.output_tokens,
+                )
+            )
+        return response
