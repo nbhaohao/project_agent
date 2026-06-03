@@ -16,38 +16,39 @@ app/
   interface/api/   FastAPI 路由、DTO、依赖注入
 ```
 
-## M0 跑起来
+## 快速启动(M11 一键全栈)
 
-前置:Docker daemon 运行中、`uv` 已装。
+前置:Docker daemon 运行中、`.env` 已配置。
 
 ```bash
-# 1. 起依赖基建(Postgres + Redis)
+# 1. 配置密钥(首次)
+cp .env.example .env   # 填入 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL / MODEL_ID / EMBEDDING_API_KEY
+
+# 2. 一键起全栈(postgres + redis + 迁移 + api + worker)
 docker compose up -d
 
-# 2. 装依赖
-uv sync
-
-# 3. 配置(首次)
-cp .env.example .env
-
-# 4. 跑迁移建表
-uv run alembic upgrade head
-
-# 5. 单元测试(无依赖,应全绿)
-uv run pytest
-
-# 6. 起服务
-uv run uvicorn app.main:app --reload
-
-# 7. E2E 验证
-curl localhost:8000/health           # {"status":"ok"}
-curl localhost:8000/health/ready     # postgres/redis 全 ok → 200
-curl -X POST localhost:8000/runs -H 'Content-Type: application/json' -d '{"input":"hello"}'
-curl localhost:8000/runs             # 列表
-# Swagger UI: http://localhost:8000/docs
+# 3. 验证
+curl localhost:8000/health/ready   # {"status":"ok","checks":{"postgres":"ok","redis":"ok"}}
+open http://localhost:8000         # 前端 demo
 ```
 
-停依赖:`docker compose down`(加 `-v` 连数据卷一起删)。
+停:`docker compose down`(加 `-v` 清数据卷)。
+
+## 本地开发模式(uv)
+
+前置:Docker daemon + `uv` 已装。
+
+```bash
+cp .env.example .env
+docker compose up -d postgres redis   # 只起基建
+uv sync
+uv run alembic upgrade head
+uv run pytest                          # 97 个单测应全绿
+uv run uvicorn app.main:app --reload   # 终端 A
+uv run python -m app.worker            # 终端 B
+curl localhost:8000/health/ready       # 验证
+# Swagger UI: http://localhost:8000/docs
+```
 
 ## 路线图(Agent 平台/Runtime)
 
@@ -62,4 +63,4 @@ curl localhost:8000/runs             # 列表
 - **M8 记忆 + RAG** ✅ pgvector + SiliconFlow bge-m3 + remember/recall 工具 + 跨 run 语义检索
 - **M9 多 agent 编排** ✅ agent-as-tool 模式 + researcher/summarizer 专家 + capability 隔离 + 递归深度=1
 - **M10 eval + 可观测** ✅ MeteredLLMClient + Usage/RunMetrics + trace_id contextvar + JSON 日志 + metrics 落库 + SSE usage 事件 + eval harness(6 cases) + 报告 CLI
-- M11 部署收口 + UI 打磨
+- **M11 部署收口 + UI 打磨** ✅ Dockerfile(uv 多阶段) + docker-compose 全栈(migrate/api/worker) + trace_id 展示 + stream 滚动 + 运行状态

@@ -1,7 +1,7 @@
 # Project Context
 
 > 把这个文件给任何 AI 助手读，它就能快速理解这个项目的背景、目标和当前状态。
-> 最后更新：2026-06-03（M10 完成）
+> 最后更新：2026-06-03（M11 完成，全部里程碑 ✅）
 
 ---
 
@@ -53,7 +53,7 @@ app/
 | M8 记忆 + RAG | ✅ 完成 | pgvector + SiliconFlow bge-m3 + remember/recall 工具 + 跨 run 语义检索 |
 | **M9 多 agent 编排** | ✅ 完成 | agent-as-tool 模式 + SubAgentDefinition + researcher/summarizer 专家 + 递归深度=1 |
 | **M10 eval + 可观测** | ✅ 完成 | MeteredLLMClient + Usage/RunMetrics + trace_id contextvar + JSON 日志 + metrics 落库 + SSE usage 事件 + eval harness(6 cases) + 报告 CLI |
-| M11 部署收口 | 待做 | Docker 化部署 + UI 打磨 |
+| **M11 部署收口 + UI 打磨** | ✅ 完成 | Dockerfile(uv 多阶段构建) + docker-compose 全栈(migrate/api/worker) + trace_id 展示(点击复制) + stream 滚动 + 运行状态 |
 
 ## 关键架构决策（已拍板，不要再提议更改）
 
@@ -130,7 +130,9 @@ project_agent/
 │   ├── e2e_m8.sh                    # M8 集成测试（remember→recall 跨 run RAG 链路验证）
 │   ├── e2e_m9.sh                    # M9 集成测试（主 agent 委托 researcher sub-agent 全链路）
 │   └── e2e_m10.sh                   # M10 集成测试（metrics 落库 + SSE 携带 + eval CLI 启动）
-├── docker-compose.yml               # postgres:16 + redis:7
+├── Dockerfile                       # uv 多阶段构建：builder 装 .venv → runtime 拷贝 + PYTHONPATH
+├── .dockerignore                    # 排除 .venv/__pycache__/tests/.env/.git 等
+├── docker-compose.yml               # 全栈：postgres/redis/migrate(one-shot)/api/worker
 ├── pyproject.toml                   # 依赖（fastapi/uvicorn/sqlalchemy/alembic/redis/anthropic）
 └── .env.example                     # 环境变量模板（DATABASE_URL/REDIS_URL/LLM 三键）
 ```
@@ -146,21 +148,27 @@ project_agent/
 5. **分层不能混**：`application/` 不能 import `infrastructure/` 的具体类，只能依赖 `ports.py` 的 Protocol。
 6. **不要提前加 Session 实体、run_messages 表、compaction、memory 等**——这些各有对应里程碑（M5/M7/M8）。
 
-## 本地开发快速启动
+## 快速启动
 
+**M11 一键全栈（推荐 demo 用）：**
 ```bash
-# 1. 启动基础设施
-docker compose up -d
-uv run alembic upgrade head
+cp .env.example .env        # 填入 LLM/Embedding 密钥
+docker compose up -d        # postgres+redis+migrate+api+worker 全起
+open http://localhost:8000  # 前端 demo
+```
 
-# 2. 填写 .env（从 .env.example 复制，补 LLM 三键）
-cp .env.example .env
+**本地开发模式（uv）：**
+```bash
+docker compose up -d postgres redis   # 只起基建
+uv sync && uv run alembic upgrade head
+uv run pytest                          # 97 单测全绿
+uv run uvicorn app.main:app --reload   # 终端 A
+uv run python -m app.worker            # 终端 B
+```
 
-# 3. 跑单测（无需 docker）
-uv run pytest
-
-# 4. 启动 API（终端 A）
-uv run uvicorn app.main:app --reload
+**eval 套件（需全栈运行中）：**
+```bash
+uv run python -m eval      # 打印 6 case ASCII 报告，exit 0/1
 
 # 5. 启动 worker（终端 B）
 uv run python -m app.worker
